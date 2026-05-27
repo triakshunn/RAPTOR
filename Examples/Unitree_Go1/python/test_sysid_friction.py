@@ -4,6 +4,9 @@ import scipy.io as sio
 from scipy.signal import butter, filtfilt
 import sys
 import os
+from pinocchio.visualize import MeshcatVisualizer
+import matplotlib.pyplot as plt
+import time
 
 from go1_dynamics import integrate
 
@@ -214,6 +217,10 @@ def main():
     urdf_filename = "/Users/akshunn/ROAHM Lab/RAPTOR/Robots/unitree-go1/go1.urdf"
     model = pin.buildModelFromUrdf(urdf_filename)
 
+    # ### added for vis
+    # model_vis, collision_model, visual_model = pin.buildModelsFromUrdf(urdf_filename)
+    # data_vis = model_vis.createData()
+
     q_lower = model.lowerPositionLimit   # shape (nq,) = (12,) for full Go1
     q_upper = model.upperPositionLimit   # shape (nq,) = (12,) for full Go1
 
@@ -268,7 +275,7 @@ def main():
     # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
     # traj_data_clipped = traj_data[2:-2, :]
     
-    output_dir = "/Users/akshunn/ROAHM Lab/RAPTOR/Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/friction_data"
+    output_dir = "/Users/akshunn/ROAHM Lab/RAPTOR/Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/friction_data/"
     qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
     vs_clipped   = vs[2:-2]
     taus_clipped = taus[2:-2]
@@ -279,10 +286,144 @@ def main():
     print(f"tau_clipped is {taus_clipped}")
 
     os.makedirs(output_dir, exist_ok=True)
-    np.savetxt(output_dir + "q_downsampled_1.csv",   qs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + "q_d_downsampled_1.csv",  vs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + "q_dd_downsampled_1.csv", accs_filtered, delimiter=" ")
-    np.savetxt(output_dir + "tau_downsampled_1.csv",  taus_clipped, delimiter=" ")
+    np.savetxt(output_dir + f"q_downsampled_{active_joint}.csv",   qs_clipped,   delimiter=" ")
+    np.savetxt(output_dir + f"q_d_downsampled_{active_joint}.csv",  vs_clipped,   delimiter=" ")
+    np.savetxt(output_dir + f"q_dd_downsampled_{active_joint}.csv", accs_filtered, delimiter=" ")
+    np.savetxt(output_dir + f"tau_downsampled_{active_joint}.csv",  taus_clipped, delimiter=" ")
+    
+
+        # ── Static sanity check plots: all 12 joints ──────────────────────────
+    ts_clipped = ts_sim[2:-2]
+    leg_names   = ["FR", "FL", "RR", "RL"]   # 4 legs, rows
+    joint_names = ["Hip", "Thigh", "Calf"]    # 3 joints per leg, columns
+
+    # Pre-compute desired position, velocity, acceleration for all 12 joints
+    print("Pre-computing desired trajectories for all joints...")
+    qd_des_all  = np.array([traj_fn(t)[0] for t in ts_clipped])   # (N, 12)
+    vd_des_all  = np.array([traj_fn(t)[1] for t in ts_clipped])   # (N, 12)
+    add_des_all = np.array([traj_fn(t)[2] for t in ts_clipped])   # (N, 12)
+
+    def make_grid(title, actual, desired, ylabel, active_joint):
+        """Helper: 4x3 grid plot for one signal type across all 12 joints."""
+        fig, axes = plt.subplots(4, 3, figsize=(14, 10), sharex=True)
+        fig.suptitle(title, fontsize=13)
+        for leg in range(4):
+            for j in range(3):
+                jidx = leg * 3 + j
+                ax   = axes[leg, j]
+                is_active = (jidx == active_joint)
+                ax.plot(ts_clipped, actual[:, jidx],
+                        color='royalblue' if not is_active else 'red',
+                        lw=2.0 if is_active else 1.0,
+                        label='actual')
+                ax.plot(ts_clipped, desired[:, jidx],
+                        color='orange', lw=1.0, ls='--', label='desired')
+                ax.set_title(
+                    f"{leg_names[leg]} {joint_names[j]}  (j{jidx})"
+                    + ("  ← ACTIVE" if is_active else ""),
+                    fontsize=8,
+                    fontweight='bold' if is_active else 'normal',
+                    color='red' if is_active else 'black')
+                ax.grid(True, alpha=0.4)
+                if j == 0:
+                    ax.set_ylabel(ylabel, fontsize=8)
+                if leg == 3:
+                    ax.set_xlabel("Time (s)", fontsize=8)
+                if leg == 0 and j == 0:
+                    ax.legend(fontsize=7)
+        plt.tight_layout()
+        return fig
+
+    make_grid("Position — Actual vs Desired (all 12 joints)",
+              qs_clipped, qd_des_all, "rad", active_joint)
+
+    make_grid("Velocity — Actual vs Desired (all 12 joints)",
+              vs_clipped, vd_des_all, "rad/s", active_joint)
+
+    make_grid("Acceleration — Estimated vs Desired (all 12 joints)",
+              accs_filtered, add_des_all, "rad/s²", active_joint)
+
+    plt.show()
+    print("Plots complete.")
+    # # Start Meshcat viewer
+    # viz = MeshcatVisualizer(model_vis, collision_model, visual_model)
+    # viz.initViewer(open=True)   # opens browser tab automatically
+    # viz.loadViewerModel()
+
+    # # Set up live matplotlib figure
+    # plt.ion()  # interactive mode — allows live updates
+    # fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=False)
+    # fig.suptitle(f"Live Replay — Joint {active_joint}", fontsize=13)
+
+    # # Pre-compute accs on the full ts_sim grid for indexing
+    # # 5x speed math:
+    # # 5s simulation @ 10kHz = 50,000 steps. 
+    # # To play in 1s (5x speed) at a 50Hz refresh rate:
+    # # We update every 1000 steps and pause for 0.02s (20ms) between frames.
+    # playback_speed = 1.0
+    # hz = 50.0  # target display update rate
+    # decimate = int((1.0 / dt) / hz * playback_speed)  # = 200 steps
+    # dt_pause = 1.0 / hz  # = 0.02 seconds
+
+    # # Pre-align time vector for clipped data
+    # ts_clipped = ts_sim[2:-2]
+    
+    # # Pre-compute desired trajectory vectors to avoid slow list comprehensions in the loop
+    # print("Pre-computing desired trajectory for plotting...")
+    # qd_des = np.array([traj_fn(t)[0][active_joint] for t in ts_clipped])
+
+    # # Setup plots
+    # plt.ion()
+    # fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    # fig.suptitle(f"Live Replay — Joint {active_joint} (5x Speed)", fontsize=13)
+    
+    # # Pre-initialize line handles for fast plotting
+    # line_q_act, = axes[0].plot([], [], color='blue', label='q actual')
+    # line_q_des, = axes[0].plot([], [], color='orange', linestyle='--', label='q desired')
+    # axes[0].set_ylabel("Position (rad)")
+    # axes[0].legend(loc='upper right', fontsize=8)
+    # axes[0].grid(True)
+    
+    # line_v_act, = axes[1].plot([], [], color='green', label='velocity')
+    # axes[1].set_ylabel("Velocity (rad/s)")
+    # axes[1].legend(loc='upper right', fontsize=8)
+    # axes[1].grid(True)
+    
+    # line_a_act, = axes[2].plot([], [], color='red', label='acceleration')
+    # axes[2].set_ylabel("Acceleration (rad/s²)")
+    # axes[2].set_xlabel("Time (s)")
+    # axes[2].legend(loc='upper right', fontsize=8)
+    # axes[2].grid(True)
+    
+    # # Pre-set limits to avoid auto-scaling compute time
+    # axes[0].set_xlim(ts_clipped[0], ts_clipped[-1])
+    # axes[0].set_ylim(np.min(qs_clipped[:, active_joint]) - 0.1, np.max(qs_clipped[:, active_joint]) + 0.1)
+    # axes[1].set_ylim(np.min(vs_clipped[:, active_joint]) - 0.5, np.max(vs_clipped[:, active_joint]) + 0.5)
+    # axes[2].set_ylim(np.min(accs_filtered[:, active_joint]) - 5.0, np.max(accs_filtered[:, active_joint]) + 5.0)
+
+    # print("Replaying simulation in Meshcat + live plots...")
+    # for i in range(0, len(qs_clipped), decimate):
+    #     # 1. Update Meshcat
+    #     # viz.display(qs_clipped[i])
+        
+    #     # 2. Update plot lines efficiently (no cla() called)
+    #     t_now = ts_clipped[:i+1]
+    #     line_q_act.set_data(t_now, qs_clipped[:i+1, active_joint])
+    #     line_q_des.set_data(t_now, qd_des[:i+1])
+        
+    #     line_v_act.set_data(t_now, vs_clipped[:i+1, active_joint])
+        
+    #     line_a_act.set_data(t_now, accs_filtered[:i+1, active_joint])
+        
+    #     # 3. Draw and pause
+    #     fig.canvas.draw()
+    #     fig.canvas.flush_events()
+    #     plt.pause(dt_pause)
+
+    # plt.ioff()
+    # plt.show()
+    # print("Replay complete.")
+
     
     # # initialization for system identification
     
