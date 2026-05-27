@@ -50,7 +50,7 @@ bool FrictionParametersIdentification::set_parameters(
 
         pinocchio::rnea(*modelPtr_, *dataPtr_, q, v, a);
 
-        tau_inertials.col(i) = dataPtr_->tau;  // tau computed using rnea for the given q, q_d, q_dd
+        tau_inertials.col(i) = dataPtr_->tau;
     } 
 
     // Random intialized the start point
@@ -171,9 +171,9 @@ bool FrictionParametersIdentification::eval_f(
             armature.cwiseProduct(q_dd) +
             offset;
 
-        VecX tau_estimated = tau_inertial + total_friction_force; // tau_estimated generated using pinocchio's rnea + model parameters
+        VecX tau_estimated = tau_inertial + total_friction_force;
 
-        obj_value += 0.5 * (tau_estimated - tau).squaredNorm(); // tau from the data
+        obj_value += 0.5 * (tau_estimated - tau).squaredNorm();
     }
 
     update_minimal_cost_solution(n, z, new_x, obj_value);
@@ -218,7 +218,7 @@ bool FrictionParametersIdentification::eval_grad_f(
             armature.cwiseProduct(q_dd) +
             offset;
 
-        VecX tau_estimated = tau_inertial + total_friction_force; 
+        VecX tau_estimated = tau_inertial + total_friction_force;
         VecX tau_diff = tau_estimated - tau;
 
         grad_f_vec.head(Nact) += tau_diff.cwiseProduct(q_d.cwiseSign());
