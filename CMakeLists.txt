@@ -147,6 +147,7 @@ install(TARGETS
     Conslib
     Optlib
     Kinovalib
+    Go1lib
     Digitlib
     Taloslib
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

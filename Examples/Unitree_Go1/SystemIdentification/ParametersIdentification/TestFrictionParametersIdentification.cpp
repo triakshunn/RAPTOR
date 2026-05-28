@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   // Initialize model
-  const std::string urdf_filename = "../Robots/kinova-gen3/kinova.urdf";
+  const std::string urdf_filename = "/Users/akshunn/ROAHM Lab/RAPTOR/Robots/unitree-go1/go1.urdf";
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
   pinocchio::Data data(model);
@@ -25,19 +25,19 @@ int main(int argc, char *argv[]) {
   // Initialize data
   bool include_offset_input = false;
   const std::string posFile =
-      "../Examples/Kinova/SystemIdentification/ParametersIdentification/"
+      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
       "full_params_data/q_downsampled_" +
       std::string(argv[1]) + ".csv";
   const std::string velFile =
-      "../Examples/Kinova/SystemIdentification/ParametersIdentification/"
+      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
       "full_params_data/q_d_downsampled_" +
       std::string(argv[1]) + ".csv";
   const std::string accFile =
-      "../Examples/Kinova/SystemIdentification/ParametersIdentification/"
+      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
       "full_params_data/q_dd_downsampled_" +
       std::string(argv[1]) + ".csv";
   const std::string torqueFile =
-      "../Examples/Kinova/SystemIdentification/ParametersIdentification/"
+      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
       "full_params_data/tau_downsampled_" +
       std::string(argv[1]) + ".csv";
 
@@ -115,8 +115,7 @@ int main(int argc, char *argv[]) {
 
     // Write the friction parameters into the file
     const std::string outputfolder =
-        "../Examples/Kinova/SystemIdentification/ParametersIdentification/"
-        "full_params_data/";
+        "/Users/akshunn/ROAHM Lab/RAPTOR/Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/";
     std::ofstream solution(outputfolder + "friction_parameters_solution_" +
                            std::string(argv[1]) + ".csv");
 
@@ -151,7 +150,7 @@ int main(int argc, char *argv[]) {
     }
 
     const std::string outputfolder1 =
-        "../Examples/Kinova/SystemIdentification/ParametersIdentification/"
+        "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
         "full_params_data/";
     std::ofstream estimate_tau(outputfolder1 + "friction_estimate_tau_" +
                                std::string(argv[1]) + ".csv");

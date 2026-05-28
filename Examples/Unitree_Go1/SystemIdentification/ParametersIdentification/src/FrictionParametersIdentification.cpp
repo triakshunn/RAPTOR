@@ -50,7 +50,7 @@ bool FrictionParametersIdentification::set_parameters(
 
         pinocchio::rnea(*modelPtr_, *dataPtr_, q, v, a);
 
-        tau_inertials.col(i) = dataPtr_->tau;
+        tau_inertials.col(i) = dataPtr_->tau; // modelled torque from traj data (should have friction elements))
     } 
 
     // Random intialized the start point
@@ -160,10 +160,10 @@ bool FrictionParametersIdentification::eval_f(
     obj_value = 0;
 
     for (Index i = 0; i < N; i++) {
-        const VecX& q_d = velPtr_->col(i);
-        const VecX& q_dd = accPtr_->col(i);
-        const VecX& tau = torquePtr_->col(i);
-        const VecX& tau_inertial = tau_inertials.col(i);
+        const VecX& q_d = velPtr_->col(i); // traj data
+        const VecX& q_dd = accPtr_->col(i); // traj data
+        const VecX& tau = torquePtr_->col(i); // traj data
+        const VecX& tau_inertial = tau_inertials.col(i); // modelled torque from traj data (should have friction elements)
 
         VecX total_friction_force = 
             friction.cwiseProduct(q_d.cwiseSign()) +
@@ -171,9 +171,9 @@ bool FrictionParametersIdentification::eval_f(
             armature.cwiseProduct(q_dd) +
             offset;
 
-        VecX tau_estimated = tau_inertial + total_friction_force;
+        VecX tau_estimated = tau_inertial + total_friction_force; // total_friction_force model we have, but here we try to find the closest model?
 
-        obj_value += 0.5 * (tau_estimated - tau).squaredNorm();
+        obj_value += 0.5 * (tau_estimated - tau).squaredNorm();  // tau is data, real life 
     }
 
     update_minimal_cost_solution(n, z, new_x, obj_value);
