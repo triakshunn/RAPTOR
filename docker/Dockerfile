@@ -1,5 +1,5 @@
 # Use an official Ubuntu runtime as a parent image
-FROM ubuntu:22.04
+FROM --platform=linux/amd64 ubuntu:22.04
 
 # Set the working directory in the container
 WORKDIR /app
@@ -70,5 +70,5 @@ ENV CMAKE_PREFIX_PATH /usr:/opt/openrobots:/usr/local:/usr/local/include/ompl-1.
 
 # Set the entry point to VSCode's default command
 CMD ["/bin/bash"]
-
+ARG USERNAME=root
 USER $USERNAME
