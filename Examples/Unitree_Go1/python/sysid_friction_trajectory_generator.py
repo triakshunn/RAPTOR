@@ -214,7 +214,9 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
 
 def main():
     # initialization for simulation and data collection
-    urdf_filename = "/Users/akshunn/ROAHM Lab/RAPTOR/Robots/unitree-go1/go1.urdf"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
+    
     model = pin.buildModelFromUrdf(urdf_filename)
 
     # ### added for vis
@@ -275,7 +277,8 @@ def main():
     # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
     # traj_data_clipped = traj_data[2:-2, :]
     
-    output_dir = "/Users/akshunn/ROAHM Lab/RAPTOR/Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/friction_data/"
+    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/")) + "/"
+    
     qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
     vs_clipped   = vs[2:-2]
     taus_clipped = taus[2:-2]

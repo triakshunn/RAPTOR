@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   // Initialize model
-  const std::string urdf_filename = "/Users/akshunn/ROAHM Lab/RAPTOR/Robots/unitree-go1/go1.urdf";
+  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf"; // since c++ runs from build folder
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
   pinocchio::Data data(model);
@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
 
     // Write the friction parameters into the file
     const std::string outputfolder =
-        "/Users/akshunn/ROAHM Lab/RAPTOR/Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/";
+        "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/";
     std::ofstream solution(outputfolder + "friction_parameters_solution_" +
                            std::string(argv[1]) + ".csv");
 
