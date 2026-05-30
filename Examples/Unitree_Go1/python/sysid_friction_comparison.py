@@ -300,8 +300,8 @@ def main():
     Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
 
     # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    Fc_estimated[0:3] = [0.5, 0.8, 0.6]   # Coulomb friction (N·m)
-    Fv_estimated[0:3] = [0.3, 0.5, 0.4]   # Viscous damping (N·m·s/rad)
+    Fc_estimated[0:3] = [0.46, 0.77, 0.55]   # Coulomb friction (N·m)
+    Fv_estimated[0:3] = [0.36, 0.51, 0.47]   # Viscous damping (N·m·s/rad)
     Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
 
     

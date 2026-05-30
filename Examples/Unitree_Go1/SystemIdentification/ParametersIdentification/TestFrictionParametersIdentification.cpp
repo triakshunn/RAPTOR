@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
   Eigen::MatrixXd accData = Utils::initializeEigenMatrixFromFile(accFile);
   Eigen::MatrixXd torqueData = Utils::initializeEigenMatrixFromFile(torqueFile);
 
-  int N = posData.rows();
+  int N = posData.rows(); // number of time steps
   std::shared_ptr<Eigen::MatrixXd> posDataPtr_ =
       std::make_shared<Eigen::MatrixXd>(posData.transpose());
   std::shared_ptr<Eigen::MatrixXd> velDataPtr_ =
@@ -129,12 +129,12 @@ int main(int argc, char *argv[]) {
     // case 2: training data and vaildation data are different
 
     // Obtain the friction, damp and armature from the solution
-    Eigen::VectorXd friction = mynlp->solution.head(model.nv);
-    Eigen::VectorXd damping = mynlp->solution.segment(model.nv, model.nv);
-    Eigen::VectorXd armature = mynlp->solution.segment(2 * model.nv, model.nv);
+    Eigen::VectorXd friction = mynlp->solution.head(model.nv); // 12 values
+    Eigen::VectorXd damping = mynlp->solution.segment(model.nv, model.nv); // next 12 values
+    Eigen::VectorXd armature = mynlp->solution.segment(2 * model.nv, model.nv); // next 12 values
     Eigen::VectorXd offset = Eigen::VectorXd::Zero(model.nv);
     if (include_offset_input) {
-      offset = mynlp->solution.tail(model.nv);
+      offset = mynlp->solution.tail(model.nv); // last 12 values ( but not init here )
     }
 
     // case 1
