@@ -912,6 +912,11 @@ tracking_error = np.linalg.norm(q_actual - q_desired, axis=1)  # per timestep
 rmse = np.sqrt(np.mean(tracking_error**2))
 max_error = np.max(tracking_error)
 ```
+TODO: 
+1. Implement the tracking error metric. 
+2. Review the forward tracking pipeline.
+3. Run the optimization 5 times for every joint. Report the tracking error for this averaged data 
+and the reported friction parameters with the mean error and standard deviation. 
 
 Expected results:
 ```

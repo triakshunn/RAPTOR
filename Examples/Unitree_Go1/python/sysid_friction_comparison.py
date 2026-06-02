@@ -1,3 +1,4 @@
+import collections
 import numpy as np
 import pinocchio as pin
 import scipy.io as sio
@@ -161,7 +162,7 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
     e_d = qd_d - v    # velocity error
 
     # PD correction (added on top of feedforward)
-    Kp = np.ones(nv) * 500.0
+    Kp = np.ones(nv) * 500.0 ### Future todo: Are these values too high for practical application? 
     Kd = np.ones(nv) * 50.0
     Kp[active_joint_idx] = 200.0
     Kd[active_joint_idx] = 20.0
@@ -256,6 +257,137 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
         data_filtered[:, i] = filtfilt(b, a, data[:, i])
     return data_filtered
 
+
+
+def compute_tracking_metrics(qs_actual, qd_desired_all, active_joint):
+    """
+    Compute position tracking error metrics for the active joint only.
+    Parameters
+    ----------
+    qs_actual      : (N, nv)  actual joint positions
+    qd_desired_all : (N, nv)  desired joint positions
+    active_joint   : int      joint index being evaluated
+    Returns
+    -------
+    dict with keys: 'rmse', 'max_error', 'mean_error', 'error_ts'
+    """
+    error_ts   = np.abs(qs_actual[:, active_joint] - qd_desired_all[:, active_joint])
+    rmse       = np.sqrt(np.mean(error_ts ** 2))
+    max_error  = np.max(error_ts)
+    mean_error = np.mean(error_ts)
+    return {
+        'rmse':       rmse,
+        'max_error':  max_error,
+        'mean_error': mean_error,
+        'error_ts':   error_ts,
+    }
+
+
+def print_metrics_table(results):
+    """
+    Print a formatted summary table of tracking error metrics for all simulated joints.
+    Parameters
+    ----------
+    results : list of dict, each with keys:
+        'joint_name', 'joint_idx',
+        'true_rmse', 'true_max', 'true_mean',
+        'esti_rmse', 'esti_max', 'esti_mean'
+    """
+    sep = '─' * 78
+    print(f"\n{'═'*78}")
+    print(f"  IDC Position Tracking Error — Active Joint Summary")
+    print(f"{'═'*78}")
+    print(f"  {'Joint':<20} {'Controller':<14} {'RMSE (rad)':<14} {'Max |e| (rad)':<16} {'Mean |e| (rad)'}")
+    print(f"  {sep}")
+    for r in results:
+        jname = f"j{r['joint_idx']} {r['joint_name']}"
+        print(f"  {jname:<20} {'True (IDC)':<14} {r['true_rmse']:<14.6f} {r['true_max']:<16.6f} {r['true_mean']:.6f}")
+        print(f"  {'':<20} {'Estimated':<14} {r['esti_rmse']:<14.6f} {r['esti_max']:<16.6f} {r['esti_mean']:.6f}")
+        print(f"  {sep}")
+    print(f"{'═'*78}\n")
+
+def plot_active_joint_position(ts_clipped, qs_true_clipped, qs_esti_clipped,
+                                qd_des_all, active_joint, joint_label,
+                                metrics_true, metrics_esti):
+    """
+    Standalone 2-subplot position-tracking figure for a single active joint.
+    Colour scheme (distinct, not overlapping):
+        True IDC  → crimson       (solid, thick)
+        Estimated → dodgerblue    (solid, medium)
+        Desired   → darkorange    (dashed)
+    Bottom subplot shows per-timestep absolute position error for both controllers.
+    """
+    fig, (ax_pos, ax_err) = plt.subplots(
+        2, 1, figsize=(10, 6), sharex=True,
+        gridspec_kw={'height_ratios': [3, 1]}
+    )
+    fig.suptitle(
+        f"Position Tracking — {joint_label}  (j{active_joint})",
+        fontsize=13, fontweight='bold'
+    )
+    # Position subplot
+    ax_pos.plot(ts_clipped, qd_des_all[:, active_joint],
+                color='darkorange', lw=1.5, ls='--', label='Desired', zorder=1)
+    ax_pos.plot(ts_clipped, qs_true_clipped[:, active_joint],
+                color='crimson', lw=2.0, ls='-',
+                label=f'True IDC  (RMSE = {metrics_true["rmse"]:.5f} rad)', zorder=3)
+    ax_pos.plot(ts_clipped, qs_esti_clipped[:, active_joint],
+                color='dodgerblue', lw=1.5, ls='-',
+                label=f'Estimated (RMSE = {metrics_esti["rmse"]:.5f} rad)', zorder=2)
+    ax_pos.set_ylabel("Position (rad)", fontsize=10)
+    ax_pos.legend(fontsize=9, loc='upper right')
+    ax_pos.grid(True, alpha=0.35)
+    # Error subplot
+    ax_err.plot(ts_clipped, metrics_true['error_ts'],
+                color='crimson', lw=1.2, ls='-', label='|e| True IDC')
+    ax_err.plot(ts_clipped, metrics_esti['error_ts'],
+                color='dodgerblue', lw=1.2, ls='-', label='|e| Estimated')
+    ax_err.set_ylabel("|Error| (rad)", fontsize=9)
+    ax_err.set_xlabel("Time (s)", fontsize=10)
+    ax_err.legend(fontsize=8, loc='upper right')
+    ax_err.grid(True, alpha=0.35)
+    plt.tight_layout()
+    return fig
+
+def make_grid(title, true_data, esti_data, desired, ylabel, active_joint, ts_clipped, leg_names, joint_names):
+    """4×3 grid comparing true (solid red/blue) vs estimated (dashed) for all 12 joints."""
+    fig, axes = plt.subplots(4, 3, figsize=(14, 10), sharex=True)
+    fig.suptitle(title, fontsize=13)
+    for leg in range(4):
+        for j in range(3):
+            jidx = leg * 3 + j
+            ax   = axes[leg, j]
+            is_active = (jidx == active_joint)
+            
+            # Desired — darkorange dotted (drawn first, behind others)
+            ax.plot(ts_clipped, desired[:, jidx],
+                    color='darkorange', lw=1.0, ls=':', label='Desired', zorder=1)
+            # True IDC — crimson solid
+            ax.plot(ts_clipped, true_data[:, jidx],
+                    color='crimson' if is_active else 'firebrick',
+                    lw=2.0 if is_active else 1.0, ls='-',
+                    label='True IDC', zorder=3)
+            # Estimated — dodgerblue dashed
+            ax.plot(ts_clipped, esti_data[:, jidx],
+                    color='dodgerblue' if is_active else 'steelblue',
+                    lw=1.5, ls='--', label='Estimated', zorder=2)
+
+            ax.set_title(
+                f"{leg_names[leg]} {joint_names[j]}  (j{jidx})"
+                + ("  ← ACTIVE" if is_active else ""),
+                fontsize=8,
+                fontweight='bold' if is_active else 'normal',
+                color='red' if is_active else 'black')
+            ax.grid(True, alpha=0.4)
+            if j == 0:
+                ax.set_ylabel(ylabel, fontsize=8)
+            if leg == 3:    
+                ax.set_xlabel("Time (s)", fontsize=8)
+            if leg == 0 and j == 0:
+                ax.legend(fontsize=7)
+    plt.tight_layout()
+    return fig
+
 def main():
     # initialization for simulation and data collection
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -282,9 +414,6 @@ def main():
     dt = 1e-4 # 0.1 ms data measurement loop
     ts_sim = np.arange(0, 5, dt) # 5 seconds simulation
 
-    # Choose which joint to excite (e.g. 1 for FR hip, 2 for thigh, and 3 for calf)
-    active_joint = 1
-
     # Realistic values for Go1 leg joints (adjust to your liking)
     Fc_true = np.zeros(model.nv)
     Fv_true = np.zeros(model.nv)
@@ -304,166 +433,135 @@ def main():
     Fv_estimated[0:3] = [0.36, 0.51, 0.47]   # Viscous damping (N·m·s/rad)
     Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
 
+
+     # ── Labels ───────────────────────────────────────────────────────────────
+    leg_names   = ["FR", "FL", "RR", "RL"]
+    joint_names = ["Hip", "Thigh", "Calf"]
+
+     # ── Storage for metrics table and last-run grid data ──────────────────────
+    metrics_summary = []
+    last_run = {}
+
+    for active_joint in [0,1,2]:
+
+        leg_idx     = active_joint // 3   # always 0 (FR)
+        local_idx   = active_joint % 3
+        joint_label = f"{leg_names[leg_idx]} {joint_names[local_idx]}"
+        print(f"\n{'─'*60}")
+        print(f"  Simulating active_joint = {active_joint}  ({joint_label})")
+        print(f"{'─'*60}")
     
     # Wrap the trajectory function using a lambda so it accepts only time 't'
-    traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal)
+        traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal) ### IMP: we are passing active joint as lambda func, so if ever this func called outside the for loop, will take last value of active joint inside
+
+    # Run the safety verification BEFORE simulating
+        verify_trajectory_safety(traj_fn, ts_sim, model, margin=0.05)
 
     # ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint)
     
-    # True controller — uses true friction params
-    data_true = model.createData() ### what is this function?? Used for RNEA calculation
-    ctrl_fn_true = lambda q, v, qd, qd_d, qd_dd: controller(
-        model.nv, q, v, qd, qd_d, qd_dd, active_joint,
-        model_ctrl=model, data_ctrl=data_true, 
-        Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
+        # True controller — uses true friction params
+        data_true = model.createData() ### what is this function?? Used for RNEA calculation
+        ctrl_fn_true = lambda q, v, qd, qd_d, qd_dd: controller(
+            model.nv, q, v, qd, qd_d, qd_dd, active_joint,
+            model_ctrl=model, data_ctrl=data_true, 
+            Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
 
-    # Estimated controller — uses identified friction params
-    data_esti = model.createData()
-    ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller(
-        model.nv, q, v, qd, qd_d, qd_dd, active_joint,
-        model_ctrl=model, data_ctrl=data_esti, 
-        Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
-
-    # Run the safety verification BEFORE simulating
-    verify_trajectory_safety(traj_fn, ts_sim, model, margin=0.05)
-    
-    # simulate the robot dynamics using ode solver
-    # track the desired trajectory using the controller (ground truth)
-    qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, active_joint, Fc_true, Fv_true, Ia_true)
-    
-    ### track the desired trajectory using the controller (estimate)
-    qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, active_joint, Fc_estimated, Fv_estimated, Ia_estimated)
+        # Estimated controller — uses identified friction params
+        data_esti = model.createData()
+        ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller(
+            model.nv, q, v, qd, qd_d, qd_dd, active_joint,
+            model_ctrl=model, data_ctrl=data_esti, 
+            Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
 
     
-    # estimate acceleration using central difference method on velocity data
-    accs_true, dt = central_difference_4th_order(ts_sim, vs_true)
-    accs_esti, dt = central_difference_4th_order(ts_sim, vs_esti)
-    fs = 1 / dt
-    print(f"Completed acc cal")
-    # # filter acceleration data using a Butterworth low-pass filter
-    # cutoff = 20 # Hz
-    # accs_filtered = butterworth_lowpass_filter(accs, cutoff, fs)
-    accs_true_filtered = accs_true # filtering is not needed in simulation, but really important for hardware data
-    accs_esti_filtered = accs_esti # filtering is not needed in simulation, but really important for hardware data
+    
+        # simulate the robot dynamics using ode solver
+        # track the desired trajectory using the controller (ground truth)
+        qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, active_joint, Fc_true, Fv_true, Ia_true)
+        
+        ### track the desired trajectory using the controller (estimate)
+        qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, active_joint, Fc_estimated, Fv_estimated, Ia_estimated)
+
+        
+        # estimate acceleration using central difference method on velocity data
+        accs_true, dt = central_difference_4th_order(ts_sim, vs_true)
+        accs_esti, dt = central_difference_4th_order(ts_sim, vs_esti)
+        fs = 1 / dt
+        print(f"Completed acc cal")
+        
+        # # filter acceleration data using a Butterworth low-pass filter
+        # cutoff = 20 # Hz
+        # accs_filtered = butterworth_lowpass_filter(accs, cutoff, fs)
+        accs_true_filtered = accs_true # filtering is not needed in simulation, but really important for hardware data
+        accs_esti_filtered = accs_esti # filtering is not needed in simulation, but really important for hardware data
 
     
-    # # save the simulation results as a text file
-    # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
-    # traj_data_clipped = traj_data[2:-2, :]
-    
-    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/friction_results/")) + "/"
-    qs_true_clipped   = qs_true[2:-2]    # trim boundary points lost to central difference
-    vs_true_clipped   = vs_true[2:-2]
-    taus_true_clipped = taus_true[2:-2]
-    qs_esti_clipped   = qs_esti[2:-2]    # trim boundary points lost to central difference
-    vs_esti_clipped   = vs_esti[2:-2]
-    taus_esti_clipped = taus_esti[2:-2]
-    
-    # print(f"q_s clipped is {qs_clipped}")
-    # print(f"v_s clipped is {vs_clipped}")
-    # print(f"q_dd_clipped is {accs_filtered}")
-    # print(f"tau_clipped is {taus_clipped}")
+        # # save the simulation results as a text file
+        # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
+        # traj_data_clipped = traj_data[2:-2, :]
+        
+        output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/friction_results/")) + "/"
+        qs_true_clipped   = qs_true[2:-2]    # trim boundary points lost to central difference
+        vs_true_clipped   = vs_true[2:-2]
+        taus_true_clipped = taus_true[2:-2]
+        qs_esti_clipped   = qs_esti[2:-2]    # trim boundary points lost to central difference
+        vs_esti_clipped   = vs_esti[2:-2]
+        taus_esti_clipped = taus_esti[2:-2]
+        
+        # print(f"q_s clipped is {qs_clipped}")
+        # print(f"v_s clipped is {vs_clipped}")
+        # print(f"q_dd_clipped is {accs_filtered}")
+        # print(f"tau_clipped is {taus_clipped}")
 
-    os.makedirs(output_dir, exist_ok=True)
-    np.savetxt(output_dir + f"q_true_{active_joint}.csv",   qs_true_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_d_true_{active_joint}.csv",  vs_true_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_dd_true_{active_joint}.csv", accs_true_filtered, delimiter=" ")
-    np.savetxt(output_dir + f"tau_true_{active_joint}.csv",  taus_true_clipped, delimiter=" ")
-    np.savetxt(output_dir + f"q_esti_{active_joint}.csv",   qs_esti_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_d_esti_{active_joint}.csv",  vs_esti_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_dd_esti_{active_joint}.csv", accs_esti_filtered, delimiter=" ")
-    np.savetxt(output_dir + f"tau_esti_{active_joint}.csv",  taus_esti_clipped, delimiter=" ")
-    
+        os.makedirs(output_dir, exist_ok=True)
+        np.savetxt(output_dir + f"q_true_{active_joint}.csv",   qs_true_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_d_true_{active_joint}.csv",  vs_true_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_dd_true_{active_joint}.csv", accs_true_filtered, delimiter=" ")
+        np.savetxt(output_dir + f"tau_true_{active_joint}.csv",  taus_true_clipped, delimiter=" ")
+        np.savetxt(output_dir + f"q_esti_{active_joint}.csv",   qs_esti_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_d_esti_{active_joint}.csv",  vs_esti_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_dd_esti_{active_joint}.csv", accs_esti_filtered, delimiter=" ")
+        np.savetxt(output_dir + f"tau_esti_{active_joint}.csv",  taus_esti_clipped, delimiter=" ")
+        
 
         # ── Static sanity check plots: all 12 joints ──────────────────────────
-    ts_clipped = ts_sim[2:-2]
-    leg_names   = ["FR", "FL", "RR", "RL"]   # 4 legs, rows
-    joint_names = ["Hip", "Thigh", "Calf"]    # 3 joints per leg, columns
+        ts_clipped = ts_sim[2:-2]
 
-    # Pre-compute desired position, velocity, acceleration for all 12 joints
-    print("Pre-computing desired trajectories for all joints...")
-    qd_des_all  = np.array([traj_fn(t)[0] for t in ts_clipped])   # (N, 12)
-    vd_des_all  = np.array([traj_fn(t)[1] for t in ts_clipped])   # (N, 12)
-    add_des_all = np.array([traj_fn(t)[2] for t in ts_clipped])   # (N, 12)
+        # Pre-compute desired position, velocity, acceleration for all 12 joints
+        print("Pre-computing desired trajectories for all joints...")
+        qd_des_all  = np.array([traj_fn(t)[0] for t in ts_clipped])   # (N, 12)
+        vd_des_all  = np.array([traj_fn(t)[1] for t in ts_clipped])   # (N, 12)
+        add_des_all = np.array([traj_fn(t)[2] for t in ts_clipped])   # (N, 12)
 
-    # def make_grid(title, actual, desired, ylabel, active_joint):
-    #     """Helper: 4x3 grid plot for one signal type across all 12 joints."""
-    #     fig, axes = plt.subplots(4, 3, figsize=(14, 10), sharex=True)
-    #     fig.suptitle(title, fontsize=13)
-    #     for leg in range(4):
-    #         for j in range(3):
-    #             jidx = leg * 3 + j
-    #             ax   = axes[leg, j]
-    #             is_active = (jidx == active_joint)
-    #             ax.plot(ts_clipped, actual[:, jidx],
-    #                     color='royalblue' if not is_active else 'red',
-    #                     lw=2.0 if is_active else 1.0,
-    #                     label='actual')
-    #             ax.plot(ts_clipped, desired[:, jidx],
-    #                     color='orange', lw=1.0, ls='--', label='desired')
-    #             ax.set_title(
-    #                 f"{leg_names[leg]} {joint_names[j]}  (j{jidx})"
-    #                 + ("  ← ACTIVE" if is_active else ""),
-    #                 fontsize=8,
-    #                 fontweight='bold' if is_active else 'normal',
-    #                 color='red' if is_active else 'black')
-    #             ax.grid(True, alpha=0.4)
-    #             if j == 0:
-    #                 ax.set_ylabel(ylabel, fontsize=8)
-    #             if leg == 3:
-    #                 ax.set_xlabel("Time (s)", fontsize=8)
-    #             if leg == 0 and j == 0:
-    #                 ax.legend(fontsize=7)
-    #     plt.tight_layout()
-    #     return fig
+        # Tracking error metrics
+        metrics_true = compute_tracking_metrics(qs_true_clipped, qd_des_all, active_joint)
+        metrics_esti = compute_tracking_metrics(qs_esti_clipped, qd_des_all, active_joint)
 
-    def make_grid(title, true_data, esti_data, desired, ylabel, active_joint):
-        """4×3 grid comparing true (solid red/blue) vs estimated (dashed) for all 12 joints."""
-        fig, axes = plt.subplots(4, 3, figsize=(14, 10), sharex=True)
-        fig.suptitle(title, fontsize=13)
-        for leg in range(4):
-            for j in range(3):
-                jidx = leg * 3 + j
-                ax   = axes[leg, j]
-                is_active = (jidx == active_joint)
-                color_act = 'red' if is_active else 'royalblue'
+        metrics_summary.append({
+            'joint_idx':  active_joint,
+            'joint_name': joint_label,
+            'true_rmse':  metrics_true['rmse'],
+            'true_max':   metrics_true['max_error'],
+            'true_mean':  metrics_true['mean_error'],
+            'esti_rmse':  metrics_esti['rmse'],
+            'esti_max':   metrics_esti['max_error'],
+            'esti_mean':  metrics_esti['mean_error'],
+        })
 
-                # True trajectory — solid
-                ax.plot(ts_clipped, true_data[:, jidx],
-                    color=color_act, lw=2.0 if is_active else 1.0,
-                    ls='-', label='true')
-            # Estimated trajectory — dashed, same color family but muted
-                ax.plot(ts_clipped, esti_data[:, jidx],
-                        color='salmon' if is_active else 'steelblue',
-                        lw=1.5, ls='--', label='estimated')
-                # Desired trajectory — orange dotted
-                ax.plot(ts_clipped, desired[:, jidx],
-                        color='orange', lw=1.0, ls=':', label='desired')
+        # Focused single-joint position plot
+        plot_active_joint_position(
+            ts_clipped, qs_true_clipped, qs_esti_clipped,
+            qd_des_all, active_joint, joint_label,
+            metrics_true, metrics_esti)
 
-                ax.set_title(
-                    f"{leg_names[leg]} {joint_names[j]}  (j{jidx})"
-                    + ("  ← ACTIVE" if is_active else ""),
-                    fontsize=8,
-                    fontweight='bold' if is_active else 'normal',
-                    color='red' if is_active else 'black')
-                ax.grid(True, alpha=0.4)
-                if j == 0:
-                    ax.set_ylabel(ylabel, fontsize=8)
-                if leg == 3:    
-                    ax.set_xlabel("Time (s)", fontsize=8)
-                if leg == 0 and j == 0:
-                    ax.legend(fontsize=7)
-        plt.tight_layout()
-        return fig
+        make_grid("Position — True vs Estimated vs Desired (all 12 joints)",
+              qs_true_clipped, qs_esti_clipped,
+              qd_des_all, "rad", active_joint, ts_clipped, leg_names, joint_names)
+              
 
-    make_grid("Position — True vs Estimated vs Desired (all 12 joints)",
-          qs_true_clipped, qs_esti_clipped, qd_des_all, "rad", active_joint)
 
-    make_grid("Velocity — True vs Estimated vs Desired (all 12 joints)",
-          vs_true_clipped, vs_esti_clipped, vd_des_all, "rad/s", active_joint)
-
-    make_grid("Acceleration — True vs Estimated vs Desired (all 12 joints)",
-          accs_true_filtered, accs_esti_filtered, add_des_all, "rad/s²", active_joint)
+    # ── Print consolidated metrics table ──────────────────────────────────────
+    print_metrics_table(metrics_summary)
 
     plt.show()
     print("Plots complete.")
