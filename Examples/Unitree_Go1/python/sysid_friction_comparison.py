@@ -8,6 +8,7 @@ import os
 from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 import time
+import copy
 
 from go1_dynamics import integrate
 
@@ -84,8 +85,8 @@ def desired_trajectory_friction(t, local_joint_idx):
     
     # Center and amplitude parameters for the Go1 Front Right (FR) leg joints
     # 0 = Hip, 1 = Thigh, 2 = Calf
-    centers = [0.2, 1.1, -2.5]
-    amplitudes = [0.9, 1.0, 0.2] ## changed from the original generated trajectory
+    centers = [0.1, 1.1, -2.5]
+    amplitudes = [0.8, 1.0, 0.2] ## changed from the original generated trajectory
     
     # Map the active joint to the 3-joint leg configuration
     c = centers[local_joint_idx]
@@ -393,6 +394,7 @@ def main():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
     model = pin.buildModelFromUrdf(urdf_filename)
+    model_esti = copy.deepcopy(model)      # independent copy — has its own armature field
 
     # ### added for vis
     # model_vis, collision_model, visual_model = pin.buildModelsFromUrdf(urdf_filename)
@@ -467,10 +469,11 @@ def main():
             Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
 
         # Estimated controller — uses identified friction params
-        data_esti = model.createData()
+        model_esti.armature = Ia_estimated 
+        data_esti = model_esti.createData()
         ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller(
             model.nv, q, v, qd, qd_d, qd_dd, active_joint,
-            model_ctrl=model, data_ctrl=data_esti, 
+            model_ctrl=model_esti, data_ctrl=data_esti, 
             Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
 
     
@@ -480,7 +483,7 @@ def main():
         qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, active_joint, Fc_true, Fv_true, Ia_true)
         
         ### track the desired trajectory using the controller (estimate)
-        qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, active_joint, Fc_estimated, Fv_estimated, Ia_estimated)
+        qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, active_joint, Fc_true, Fv_true, Ia_true)
 
         
         # estimate acceleration using central difference method on velocity data

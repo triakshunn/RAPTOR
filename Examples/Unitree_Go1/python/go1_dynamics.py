@@ -89,20 +89,20 @@ def integrate(model, ts_sim, x0, desired_trajectory, controller, active_joint, F
         qd, qd_d, qd_dd = desired_trajectory(t)
     
 
-        tau_cmd= controller(q, v, qd, qd_d, qd_dd)
+        tau_cmd= controller(q, v, qd, qd_d, qd_dd) ### uses armature from the model.armature
 
         # Coulomb + viscous friction resist motion — subtract from commanded torque
         tau_friction = Fc_true * np.sign(v) + Fv_true * v
         tau = tau_cmd - tau_friction
         a = pin.aba(
-            model, data, q, v, tau
+            model, data, q, v, tau ### the model passed here is with true armature for simulation dynamics, tau is having model.armature from what we estimated.
         )
         
         return np.concatenate([v, a])
     
     # solve the ODE
     print(f"Start integrating using {method} method")
-    model.armature = Ia_true
+    model.armature = Ia_true ### so this cannot be included in my control law ever? No, but you can give armature seperately in model, and if estimation is perfect, you will track properly.
     sol = solve_ivp(
         dynamics, 
         [ts_sim[0], ts_sim[-1]],
