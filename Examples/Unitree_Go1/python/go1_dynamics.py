@@ -121,7 +121,7 @@ def integrate(model, ts_sim, x0, desired_trajectory, controller, active_joint, F
         q = qs[i]
         v = vs[i]
         qd, qd_d, qd_dd = desired_trajectory(t)
-        taus[i] = controller(q, v, qd, qd_d, qd_dd)
+        taus[i] = controller(q, v, qd, qd_d, qd_dd) ### this is tau_cmd on line 92, we get it this way since we cant store tau_cmd during sim.
     print(f"Returning the sim results")
     return qs, vs, taus
 

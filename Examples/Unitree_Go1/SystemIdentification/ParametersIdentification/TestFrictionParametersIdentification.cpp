@@ -139,7 +139,8 @@ int main(int argc, char *argv[]) {
 
     // case 1
     // Calculate the inertia tau
-    Eigen::MatrixXd tau_inertials = Eigen::MatrixXd::Zero(model.nv, N);
+    Eigen::MatrixXd tau_inertials = Eigen::MatrixXd::Zero(model.nv, N); // rows: number of joints, cols: number of time steps
+    
     for (int i = 0; i < N; i++) {
       const Eigen::VectorXd &q = posDataPtr_->col(i);
       const Eigen::VectorXd &v = velDataPtr_->col(i);
@@ -173,7 +174,7 @@ int main(int argc, char *argv[]) {
           estimate_tau << " ";
         }
       }
-      estimate_tau << std::endl;
+      estimate_tau << std::endl; // this should be the tau from the data. 
     }
 
     // case 2
