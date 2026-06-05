@@ -47,17 +47,30 @@ sys.path.append("/workspaces/RAPTOR/build/lib")
 #     return qd, qd_d, qd_dd
 
 
-def verify_trajectory_safety(traj_fn, ts, model, margin=0.05):
+def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
     """
     Checks if the desired trajectory violates joint position limits at any simulated time step.
     """
     q_min = model.lowerPositionLimit
     q_max = model.upperPositionLimit
     
+    # Go1 hardware limits
+    TAU_LIMIT_HIP_THIGH = 23.7    # N·m
+    TAU_LIMIT_CALF      = 23.7   # N·m
+    V_LIMIT             = 30.0    # rad/s
+
+    # Build per-joint torque limit array (12 joints: 4 legs × [hip, thigh, calf])
+    tau_limit = np.array([
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FR
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FL
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RR
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RL
+    ])
+    
     # Sample 1000 points evenly across the simulation duration for efficiency
     ts_sample = np.linspace(ts[0], ts[-1], 1000)
     for t in ts_sample:
-        qd, _, _ = traj_fn(t)
+        qd, qd_d, qd_dd = traj_fn(t)
         
         # Check position limits
         if np.any(qd < q_min + margin) or np.any(qd > q_max - margin):
@@ -74,7 +87,25 @@ def verify_trajectory_safety(traj_fn, ts, model, margin=0.05):
                 error_msg += f"    qd: {qd[upper_violations]}\n"
                 error_msg += f"    limits: {q_max[upper_violations]}\n"
             raise ValueError(error_msg)
-            
+
+        # --- Velocity check ---
+        if np.any(np.abs(qd_d) > V_LIMIT):
+            viol = np.where(np.abs(qd_d) > V_LIMIT)[0]
+            raise ValueError(
+                f"Trajectory velocity limit violation at t={t:.4f}s!\n"
+                f"  Joint(s) {viol}: |qd_d|={np.abs(qd_d[viol])} > {V_LIMIT} rad/s"
+            )
+    
+        # --- Torque check (uses controller evaluated at desired state, i.e. zero tracking error) ---
+        if ctrl_fn is not None:
+            # Evaluate torque assuming perfect tracking (q=qd, v=qd_d) → pure feedforward torque
+            tau = ctrl_fn(qd, qd_d, qd, qd_d, qd_dd)
+            if np.any(np.abs(tau) > tau_limit):
+                viol = np.where(np.abs(tau) > tau_limit)[0]
+                raise ValueError(
+                    f"Trajectory torque limit violation at t={t:.4f}s!\n"
+                    f"  Joint(s) {viol}: |tau|={np.abs(tau[viol])} > limit={tau_limit[viol]} N·m"
+                )
     print("✓ Joint limit safety verification passed.")
 
 
@@ -165,10 +196,11 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
     e_d = qd_d - v    # velocity error
 
     # PD correction (added on top of feedforward)
-    Kp = np.ones(nv) * 500.0 ### Future todo: Are these values too high for practical application? 
-    Kd = np.ones(nv) * 50.0
-    Kp[active_joint_idx] = 200.0
-    Kd[active_joint_idx] = 20.0
+    Kp = np.ones(nv) * 40.0 
+    Kd = np.ones(nv) * 1.0
+
+    Kp[active_joint_idx] = 20.0
+    Kd[active_joint_idx] = 0.5
 
     if model_ctrl is None:
         # Fallback: pure PD
@@ -449,10 +481,17 @@ def main():
     Fv_true[0:3] = [0.3, 0.5, 0.4]   # Viscous damping (N·m·s/rad)
     Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
 
+    # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+    # Fc_estimated[0:3] = [0.46, 0.77, 0.55]   # Coulomb friction (N·m)
+    # Fv_estimated[0:3] = [0.36, 0.51, 0.47]   # Viscous damping (N·m·s/rad)
+    # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+    #### Upper are high gains estimated params
+
     # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    Fc_estimated[0:3] = [0.46, 0.77, 0.55]   # Coulomb friction (N·m)
-    Fv_estimated[0:3] = [0.36, 0.51, 0.47]   # Viscous damping (N·m·s/rad)
+    Fc_estimated[0:3] = [0.35, 0.67, 0.43]   # Coulomb friction (N·m)
+    Fv_estimated[0:3] = [0.52, 0.54, 0.65]   # Viscous damping (N·m·s/rad)
     Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+    #### Upper are low gains estimated params
 
     
     ## Noisy friction parameters for result validation (20% noise)
