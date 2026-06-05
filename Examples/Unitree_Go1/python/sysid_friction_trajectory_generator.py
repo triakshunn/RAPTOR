@@ -7,6 +7,7 @@ import os
 from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 import time
+import argparse
 
 from go1_dynamics import integrate
 
@@ -34,17 +35,30 @@ sys.path.append("/workspaces/RAPTOR/build/lib")
 #     qd_dd = -np.sin(t) * np.ones(7)
 #     return qd, qd_d, qd_dd
 
-def verify_trajectory_safety(traj_fn, ts, model, margin=0.05):
+def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
     """
     Checks if the desired trajectory violates joint position limits at any simulated time step.
     """
     q_min = model.lowerPositionLimit
     q_max = model.upperPositionLimit
     
+    # Go1 hardware limits
+    TAU_LIMIT_HIP_THIGH = 23.7    # N·m
+    TAU_LIMIT_CALF      = 23.7   # N·m
+    V_LIMIT             = 30.0    # rad/s
+
+    # Build per-joint torque limit array (12 joints: 4 legs × [hip, thigh, calf])
+    tau_limit = np.array([
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FR
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FL
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RR
+        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RL
+    ])
+
     # Sample 1000 points evenly across the simulation duration for efficiency
     ts_sample = np.linspace(ts[0], ts[-1], 1000)
     for t in ts_sample:
-        qd, _, _ = traj_fn(t)
+        qd,qd_d,qd_dd = traj_fn(t)
         
         # Check position limits
         if np.any(qd < q_min + margin) or np.any(qd > q_max - margin):
@@ -61,7 +75,24 @@ def verify_trajectory_safety(traj_fn, ts, model, margin=0.05):
                 error_msg += f"    qd: {qd[upper_violations]}\n"
                 error_msg += f"    limits: {q_max[upper_violations]}\n"
             raise ValueError(error_msg)
-            
+
+    # --- Velocity check ---
+        if np.any(np.abs(qd_d) > V_LIMIT):
+            viol = np.where(np.abs(qd_d) > V_LIMIT)[0]
+            raise ValueError(
+                f"Trajectory velocity limit violation at t={t:.4f}s!\n"
+                f"  Joint(s) {viol}: |qd_d|={np.abs(qd_d[viol])} > {V_LIMIT} rad/s"
+            )
+    # --- Torque check (uses controller evaluated at desired state, i.e. zero tracking error) ---
+        if ctrl_fn is not None:
+            # Evaluate torque assuming perfect tracking (q=qd, v=qd_d) → pure feedforward torque
+            tau = ctrl_fn(qd, qd_d, qd, qd_d, qd_dd)
+            if np.any(np.abs(tau) > tau_limit):
+                viol = np.where(np.abs(tau) > tau_limit)[0]
+                raise ValueError(
+                    f"Trajectory torque limit violation at t={t:.4f}s!\n"
+                    f"  Joint(s) {viol}: |tau|={np.abs(tau[viol])} > limit={tau_limit[viol]} N·m"
+                )
     print("✓ Joint limit safety verification passed.")
 
 
@@ -129,11 +160,11 @@ def desired_trajectory_full(t, active_joint_idx, nq, q_nominal):
 #     return tau
 
 def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx):
-    kp = np.ones(nv) * 500.0   # high stiffness for frozen joints
-    kd = np.ones(nv) * 50.0
+    kp = np.ones(nv) * 40.0   # high stiffness for frozen joints
+    kd = np.ones(nv) * 1.0
     
-    kp[active_joint_idx] = 200.0  # moderate for active joint
-    kd[active_joint_idx] = 20.0
+    kp[active_joint_idx] = 20.0  # moderate for active joint
+    kd[active_joint_idx] = 0.5
     
     tau = kp * (qd - q) + kd * (qd_d - v)
     return tau
@@ -212,7 +243,7 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
         data_filtered[:, i] = filtfilt(b, a, data[:, i])
     return data_filtered
 
-def main():
+def main(active_joint=0):
     # initialization for simulation and data collection
     current_dir = os.path.dirname(os.path.abspath(__file__))
     urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
@@ -239,8 +270,6 @@ def main():
     dt = 1e-4 # 0.1 ms data measurement loop
     ts_sim = np.arange(0, 5, dt) # 5 seconds simulation
 
-    # Choose which joint to excite (e.g. 1 for FR hip, 2 for thigh, and 3 for calf)
-    active_joint = 1
 
     # Realistic values for Go1 leg joints (adjust to your liking)
     Fc_true = np.zeros(model.nv)
@@ -257,7 +286,7 @@ def main():
     ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint)
     
     # Run the safety verification BEFORE simulating
-    verify_trajectory_safety(traj_fn, ts_sim, model, margin=0.05)
+    verify_trajectory_safety(traj_fn, ctrl_fn, ts_sim, model, margin=0.05)
     
     # simulate the robot dynamics using ode solver
     # track the desired trajectory using the controller
@@ -277,7 +306,7 @@ def main():
     # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
     # traj_data_clipped = traj_data[2:-2, :]
     
-    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/")) + "/"
+    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/low_gains")) + "/"
     
     qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
     vs_clipped   = vs[2:-2]
@@ -466,4 +495,8 @@ def main():
     # print("groundtruth:\n", model.inertias[-1].toDynamicParameters())
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Go1 SysID Friction Trajectory Generator')
+    parser.add_argument('--joint', type=int, default=0,
+                        help='Active joint index to excite (0=FR hip, 1=FR thigh, 2=FR calf)')
+    args = parser.parse_args()
+    main(active_joint=args.joint)

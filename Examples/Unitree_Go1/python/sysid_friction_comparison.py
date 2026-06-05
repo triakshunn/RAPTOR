@@ -294,7 +294,8 @@ def print_metrics_table(results):
     results : list of dict, each with keys:
         'joint_name', 'joint_idx',
         'true_rmse', 'true_max', 'true_mean',
-        'esti_rmse', 'esti_max', 'esti_mean'
+        'esti_rmse', 'esti_max', 'esti_mean',
+        'noise_rmse', 'noise_max', 'noise_mean'
     """
     sep = '─' * 78
     print(f"\n{'═'*78}")
@@ -306,6 +307,7 @@ def print_metrics_table(results):
         jname = f"j{r['joint_idx']} {r['joint_name']}"
         print(f"  {jname:<20} {'True (IDC)':<14} {r['true_rmse']:<14.6f} {r['true_max']:<16.6f} {r['true_mean']:.6f}")
         print(f"  {'':<20} {'Estimated':<14} {r['esti_rmse']:<14.6f} {r['esti_max']:<16.6f} {r['esti_mean']:.6f}")
+        print(f"  {'':<20} {'Noisy':<14} {r['noise_rmse']:<14.6f} {r['noise_max']:<16.6f} {r['noise_mean']:.6f}")
         print(f"  {sep}")
     print(f"{'═'*78}\n")
 
