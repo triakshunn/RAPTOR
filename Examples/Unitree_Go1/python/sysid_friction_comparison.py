@@ -210,7 +210,7 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
     a_des = qd_dd + Kd * e_d + Kp * e ### what is the logic behind this? why cant just be qd_dd here? 
 
     # Model-based feedforward: RNEA(q, v, a_des)
-    tau_ff = pin.rnea(model_ctrl, data_ctrl, q, v, a_des) ### what is data_ctrl here? this is just needed for the function
+    tau_ff = pin.rnea(model_ctrl, data_ctrl, q, v, a_des) ### what is data_ctrl here? this is just needed for the function ### claude says to change this to q,qdes,qddes etc. (still dont get it)
 
     # Friction feedforward compensation
     tau_fric_comp = Fc_ctrl * np.sign(v) + Fv_ctrl * v ### where is armature included in the model? (Not needed, since it comes in the integrator dynamics)

@@ -123,7 +123,7 @@ def integrate(model, ts_sim, x0, desired_trajectory, controller, active_joint, F
         qd, qd_d, qd_dd = desired_trajectory(t)
         taus[i] = controller(q, v, qd, qd_d, qd_dd) ### this is tau_cmd on line 92, we get it this way since we cant store tau_cmd during sim.
     print(f"Returning the sim results")
-    return qs, vs, taus
+    return qs, vs, taus ### interesting: with lower gains, more tracking error here (expected) but why are my optimized gains WORSE? 
 
 def set_position(robot, q):
     """

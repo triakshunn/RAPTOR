@@ -8,8 +8,15 @@ from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 import time
 import argparse
+import pinocchio as pin
 
 from go1_dynamics import integrate
+
+
+'''
+Go1 torque limits doc: https://pmc.ncbi.nlm.nih.gov/articles/PMC11207842/pdf/sensors-24-03825.pdf
+Go1 Kp:Kd torque values taken from here: https://arxiv.org/pdf/2304.09834
+'''
 
 sys.path.append("/workspaces/RAPTOR/build/lib")
 # import end_effector_sysid_nanobind
@@ -97,7 +104,7 @@ def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
 
 
 
-def desired_trajectory_friction(t, local_joint_idx):
+def desired_trajectory_friction(t, local_joint_idx): ### remove local_joint_idx for simultaneous excitation
     """
     Generate exciting trajectory for active_joint_idx while keeping others frozen.
     Returns full vectors of size nq.
@@ -163,11 +170,44 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx):
     kp = np.ones(nv) * 40.0   # high stiffness for frozen joints
     kd = np.ones(nv) * 1.0
     
-    kp[active_joint_idx] = 20.0  # moderate for active joint
-    kd[active_joint_idx] = 0.5
+    kp[active_joint_idx] = 60  # moderate for active joint
+    kd[active_joint_idx] = 3
     
-    tau = kp * (qd - q) + kd * (qd_d - v)
+    tau = + kp * (qd - q) + kd * (qd_d - v)
     return tau
+
+
+# def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
+#                model_ctrl=None, data_ctrl=None):
+#     """
+#     Inverse Dynamics Controller (Computed Torque).
+#     Uses model-based feedforward + PD feedback + friction compensation.
+#     If model_ctrl is None, falls back to pure PD.
+
+#     Also note this is little different as defined in the paper "System Identification for Constrained Robots", since they find it combined, but we take out the IDC friction part seperately
+#     """
+#     e   = qd   - q    # position error
+#     e_d = qd_d - v    # velocity error
+
+#     # PD correction (added on top of feedforward)
+#     Kp = np.ones(nv) * 40.0 
+#     Kd = np.ones(nv) * 1.0
+
+#     Kp[active_joint_idx] = 20.0
+#     Kd[active_joint_idx] = 0.5
+
+#     if model_ctrl is None:
+#         # Fallback: pure PD
+#         return Kp * e + Kd * e_d
+
+#     #pin.computeAllTerms(model_ctrl, data_ctrl, q, v)
+#     # Desired acceleration with PD correction
+#     a_des = qd_dd + Kd * e_d + Kp * e ## using feedback linearization here
+
+#     # Model-based feedforward: RNEA(q, v, a_des)
+#     tau_ff = pin.rnea(model_ctrl, data_ctrl, q, v, a_des) ### what is data_ctrl here? this is just needed for the function
+
+#     return tau_ff 
 
 def central_difference_4th_order(t, velocity):
     """
@@ -249,7 +289,7 @@ def main(active_joint=0):
     urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
     
     model = pin.buildModelFromUrdf(urdf_filename)
-
+    data= model.createData()
     # ### added for vis
     # model_vis, collision_model, visual_model = pin.buildModelsFromUrdf(urdf_filename)
     # data_vis = model_vis.createData()
@@ -283,7 +323,7 @@ def main(active_joint=0):
     # Wrap the trajectory function using a lambda so it accepts only time 't'
     traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal)
 
-    ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint)
+    ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint) ### q's are  defined in the integrate function. 
     
     # Run the safety verification BEFORE simulating
     verify_trajectory_safety(traj_fn, ctrl_fn, ts_sim, model, margin=0.05)
@@ -306,7 +346,7 @@ def main(active_joint=0):
     # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
     # traj_data_clipped = traj_data[2:-2, :]
     
-    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/low_gains")) + "/"
+    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/60_3")) + "/"
     
     qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
     vs_clipped   = vs[2:-2]
