@@ -104,7 +104,7 @@ def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
 
 
 
-def desired_trajectory_friction(t, local_joint_idx): ### remove local_joint_idx for simultaneous excitation
+def desired_trajectory_friction(t, local_joint_idx): 
     """
     Generate exciting trajectory for active_joint_idx while keeping others frozen.
     Returns full vectors of size nq.
@@ -126,23 +126,29 @@ def desired_trajectory_friction(t, local_joint_idx): ### remove local_joint_idx 
     
     return qd_joint, qd_d_joint, qd_dd_joint
 
-def desired_trajectory_full(t, active_joint_idx, nq, q_nominal):
-    """
+def desired_trajectory_full(t, active_joint_idx, nq, q_nominal): #### active_joint_idx becomes an array of joints
+    """ 
     Computes desired joint positions, velocities, and accelerations for all nq joints.
     Only the active_joint_idx joint executes the exciting sinusoidal trajectory.
     All other joints remain frozen at their corresponding values in q_nominal.
     """
+    if isinstance(active_joint_idx, (int, np.integer)):
+        active_joint_idx = [active_joint_idx]
+        
     qd = np.copy(q_nominal)
     qd_d = np.zeros(nq)
     qd_dd = np.zeros(nq)    
     
     # Get the sinusoidal trajectory for the active joint
     # (using local_idx = active_joint_idx % 3 to map to Go1 leg joint configs)
-    qd_active, qd_d_active, qd_dd_active = desired_trajectory_friction(t, active_joint_idx % 3)
 
-    qd[active_joint_idx] = qd_active
-    qd_d[active_joint_idx] = qd_d_active
-    qd_dd[active_joint_idx] = qd_dd_active
+    for active_joint in active_joint_idx:
+        local_joint_idx = active_joint % 3
+        qd_active, qd_d_active, qd_dd_active = desired_trajectory_friction(t, local_joint_idx)
+        
+        qd[active_joint] = qd_active
+        qd_d[active_joint] = qd_d_active
+        qd_dd[active_joint] = qd_dd_active
 
     return qd, qd_d, qd_dd
 
@@ -284,6 +290,10 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
     return data_filtered
 
 def main(active_joint=0):
+    if isinstance(active_joint, (int, np.integer)):
+        active_joint = [active_joint]
+    active_joint_str = "_".join(map(str, active_joint))
+
     # initialization for simulation and data collection
     current_dir = os.path.dirname(os.path.abspath(__file__))
     urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
@@ -358,10 +368,10 @@ def main(active_joint=0):
     print(f"tau_clipped is {taus_clipped}")
 
     os.makedirs(output_dir, exist_ok=True)
-    np.savetxt(output_dir + f"q_downsampled_{active_joint}.csv",   qs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_d_downsampled_{active_joint}.csv",  vs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_dd_downsampled_{active_joint}.csv", accs_filtered, delimiter=" ")
-    np.savetxt(output_dir + f"tau_downsampled_{active_joint}.csv",  taus_clipped, delimiter=" ")
+    np.savetxt(output_dir + f"q_downsampled_{active_joint_str}.csv",   qs_clipped,   delimiter=" ")
+    np.savetxt(output_dir + f"q_d_downsampled_{active_joint_str}.csv",  vs_clipped,   delimiter=" ")
+    np.savetxt(output_dir + f"q_dd_downsampled_{active_joint_str}.csv", accs_filtered, delimiter=" ")
+    np.savetxt(output_dir + f"tau_downsampled_{active_joint_str}.csv",  taus_clipped, delimiter=" ")
     
 
         # ── Static sanity check plots: all 12 joints ──────────────────────────
@@ -383,7 +393,7 @@ def main(active_joint=0):
             for j in range(3):
                 jidx = leg * 3 + j
                 ax   = axes[leg, j]
-                is_active = (jidx == active_joint)
+                is_active = (jidx in active_joint)
                 ax.plot(ts_clipped, actual[:, jidx],
                         color='royalblue' if not is_active else 'red',
                         lw=2.0 if is_active else 1.0,
@@ -536,7 +546,13 @@ def main(active_joint=0):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Go1 SysID Friction Trajectory Generator')
-    parser.add_argument('--joint', type=int, default=0,
-                        help='Active joint index to excite (0=FR hip, 1=FR thigh, 2=FR calf)')
+    parser.add_argument('--joint', type=str, nargs='+', default=['0'],
+                        help='Active joint index or indices to excite (e.g. 0 or 0,1,2 or 0 1 2)')
     args = parser.parse_args()
-    main(active_joint=args.joint)
+    
+    active_joints = []
+    for item in args.joint:
+        for subitem in item.replace(',', ' ').split():
+            active_joints.append(int(subitem))
+            
+    main(active_joint=active_joints)
