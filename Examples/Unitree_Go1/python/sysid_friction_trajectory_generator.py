@@ -308,7 +308,7 @@ def main(active_joint=0):
     q_upper = model.upperPositionLimit   # shape (nq,) = (12,) for full Go1
 
     if model.nq == 12:
-        q_nominal = np.array([0.0, 0.9, -1.8] * 4)
+        q_nominal = np.array([0.2, 1.8, -1.7] * 4)
     else:
         # Fallback for Kinova (7 joints) or other models
         q_nominal = np.zeros(model.nq)

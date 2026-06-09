@@ -487,12 +487,23 @@ def main():
     # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
     #### Upper are high gains estimated params
 
-    # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    Fc_estimated[0:3] = [0.35, 0.67, 0.43]   # Coulomb friction (N·m)
-    Fv_estimated[0:3] = [0.52, 0.54, 0.65]   # Viscous damping (N·m·s/rad)
-    Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    #### Upper are low gains estimated params
+    # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+    # Fc_estimated[0:3] = [0.35, 0.67, 0.43]   # Coulomb friction (N·m)
+    # Fv_estimated[0:3] = [0.52, 0.54, 0.65]   # Viscous damping (N·m·s/rad)
+    # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+    # #### Upper are low gains estimated params
 
+    # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+    Fc_estimated[0:3] = [0.37, 0.62, 0.44]   # Coulomb friction (N·m)
+    Fv_estimated[0:3] = [0.53, 0.63, 0.64]   # Viscous damping (N·m·s/rad)
+    Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+    #### Upper are series 60_3 gain results 
+
+    # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+    Fc_estimated[0:3] = [0.37, 0.62, 0.44]   # Coulomb friction (N·m)
+    Fv_estimated[0:3] = [0.51, 0.63, 0.65]   # Viscous damping (N·m·s/rad)
+    Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+    #### Upper are parallel 60_3 gain results (Not a lot of effect then?)
     
     ## Noisy friction parameters for result validation (20% noise)
     Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)

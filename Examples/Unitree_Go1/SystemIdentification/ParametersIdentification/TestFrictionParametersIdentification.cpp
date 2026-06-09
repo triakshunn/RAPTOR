@@ -26,19 +26,19 @@ int main(int argc, char *argv[]) {
   bool include_offset_input = false;
   const std::string posFile =
       "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/low_gains/q_downsampled_" +
+      "full_params_data/gains/60_3/q_downsampled_" +
       std::string(argv[1]) + ".csv";
   const std::string velFile =
       "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/low_gains/q_d_downsampled_" +
+      "full_params_data/gains/60_3/q_d_downsampled_" +
       std::string(argv[1]) + ".csv";
   const std::string accFile =
       "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/low_gains/q_dd_downsampled_" +
+      "full_params_data/gains/60_3/q_dd_downsampled_" +
       std::string(argv[1]) + ".csv";
   const std::string torqueFile =
       "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/low_gains/tau_downsampled_" +
+      "full_params_data/gains/60_3/tau_downsampled_" +
       std::string(argv[1]) + ".csv";
 
   Eigen::MatrixXd posData = Utils::initializeEigenMatrixFromFile(posFile);
@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
 
     // Write the friction parameters into the file
     const std::string outputfolder =
-        "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/low_gains/";
+        "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/gains/60_3/";
     std::ofstream solution(outputfolder + "friction_parameters_solution_" +
                            std::string(argv[1]) + ".csv");
 
