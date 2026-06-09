@@ -178,6 +178,11 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx):
     
     kp[active_joint_idx] = 60  # moderate for active joint
     kd[active_joint_idx] = 3
+    # kp = np.ones(nv) * 500.0   # high stiffness for frozen joints
+    # kd = np.ones(nv) * 50.0
+    
+    # kp[active_joint_idx] = 200.0  # moderate for active joint
+    # kd[active_joint_idx] = 20.0
     
     tau = + kp * (qd - q) + kd * (qd_d - v)
     return tau
@@ -356,11 +361,22 @@ def main(active_joint=0):
     # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
     # traj_data_clipped = traj_data[2:-2, :]
     
-    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/60_3")) + "/"
+    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/200_20")) + "/"
     
     qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
     vs_clipped   = vs[2:-2]
     taus_clipped = taus[2:-2]
+
+
+    #### removing near zero velocity values to avoid chattering
+    v_threshold = 0.01
+    keep_mask = np.ones(len(vs_clipped), dtype=bool)
+    for j in active_joint:
+        keep_mask &= np.abs(vs_clipped[:, j]) >= v_threshold
+    qs_clipped   = qs_clipped[keep_mask]
+    vs_clipped   = vs_clipped[keep_mask]
+    taus_clipped = taus_clipped[keep_mask]
+    accs_filtered = accs_filtered[keep_mask]
     
     print(f"q_s clipped is {qs_clipped}")
     print(f"v_s clipped is {vs_clipped}")
@@ -368,14 +384,16 @@ def main(active_joint=0):
     print(f"tau_clipped is {taus_clipped}")
 
     os.makedirs(output_dir, exist_ok=True)
-    np.savetxt(output_dir + f"q_downsampled_{active_joint_str}.csv",   qs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_d_downsampled_{active_joint_str}.csv",  vs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_dd_downsampled_{active_joint_str}.csv", accs_filtered, delimiter=" ")
-    np.savetxt(output_dir + f"tau_downsampled_{active_joint_str}.csv",  taus_clipped, delimiter=" ")
+    np.savetxt(output_dir + f"q_downsampled_filtered_{active_joint_str}.csv",   qs_clipped,   delimiter=" ")
+    np.savetxt(output_dir + f"q_d_downsampled_filtered_{active_joint_str}.csv",  vs_clipped,   delimiter=" ")
+    np.savetxt(output_dir + f"q_dd_downsampled_filtered_{active_joint_str}.csv", accs_filtered, delimiter=" ")
+    np.savetxt(output_dir + f"tau_downsampled_filtered_{active_joint_str}.csv",  taus_clipped, delimiter=" ")
     
 
         # ── Static sanity check plots: all 12 joints ──────────────────────────
     ts_clipped = ts_sim[2:-2]
+    ts_clipped = ts_clipped[keep_mask]
+
     leg_names   = ["FR", "FL", "RR", "RL"]   # 4 legs, rows
     joint_names = ["Hip", "Thigh", "Calf"]    # 3 joints per leg, columns
 
