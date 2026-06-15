@@ -1157,6 +1157,10 @@ PZSparse cos(const PZSparse& a) {
     return res;
 }
 
+PZSparse atan2(const PZSparse& y, const PZSparse& x) {
+    return PZSparse(std::atan2(y.center, x.center));
+}
+
 }; // namespace Armour
 }; // namespace Kinova
 }; // namespace RAPTOR

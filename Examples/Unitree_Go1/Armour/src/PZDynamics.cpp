@@ -1,7 +1,7 @@
 #include "PZDynamics.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 namespace Armour {
 
 PZDynamics::PZDynamics(const std::shared_ptr<RobotInfo>& robotInfoPtr_input,
@@ -316,5 +316,5 @@ void PZDynamics::compute() {
 }
 
 }; // namespace Armour
-}; // namespace Kinova
+}; // namespace Go1
 }; // namespace RAPTOR

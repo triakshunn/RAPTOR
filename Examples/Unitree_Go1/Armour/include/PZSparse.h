@@ -4,7 +4,7 @@
 #include "ArmourHeaders.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 namespace Armour {
 
 using namespace boost::multiprecision;
@@ -175,29 +175,34 @@ PZSparse sin(const PZSparse& a);
 
 PZSparse cos(const PZSparse& a);
 
+// Required by Pinocchio's math::atan2 dispatch (used internally in newer Pinocchio versions
+// e.g. in computeJointTorqueRegressor / special-orthogonal Lie group operations).
+// Computes atan2 at the center value and returns a scalar-valued PZSparse.
+PZSparse atan2(const PZSparse& y, const PZSparse& x);
+
 }; // namespace Armour
-}; // namespace Kinova
+}; // namespace Go1
 }; // namespace RAPTOR
 
 // define numeric_limits for PZSparse
 namespace std {
     template<>
-    class numeric_limits<RAPTOR::Kinova::Armour::PZSparse> {
+    class numeric_limits<RAPTOR::Go1::Armour::PZSparse> {
     public:
         static constexpr bool is_specialized = true;
         static constexpr bool is_signed = true;
         static constexpr bool is_integer = false;
-        static RAPTOR::Kinova::Armour::PZSparse min() noexcept {
-            return RAPTOR::Kinova::Armour::PZSparse(numeric_limits<double>::min());
+        static RAPTOR::Go1::Armour::PZSparse min() noexcept {
+            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::min());
         }
-        static RAPTOR::Kinova::Armour::PZSparse max() noexcept {
-            return RAPTOR::Kinova::Armour::PZSparse(numeric_limits<double>::max());
+        static RAPTOR::Go1::Armour::PZSparse max() noexcept {
+            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::max());
         }
-        static RAPTOR::Kinova::Armour::PZSparse lowest() noexcept {
-            return RAPTOR::Kinova::Armour::PZSparse(numeric_limits<double>::lowest());
+        static RAPTOR::Go1::Armour::PZSparse lowest() noexcept {
+            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::lowest());
         }
-        static RAPTOR::Kinova::Armour::PZSparse epsilon() noexcept {
-            return RAPTOR::Kinova::Armour::PZSparse(numeric_limits<double>::epsilon());
+        static RAPTOR::Go1::Armour::PZSparse epsilon() noexcept {
+            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::epsilon());
         }
     };
 }; // namespace std

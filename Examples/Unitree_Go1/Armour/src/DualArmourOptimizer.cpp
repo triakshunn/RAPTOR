@@ -1,7 +1,7 @@
 #include "DualArmourOptimizer.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 namespace Armour {
 
 bool DualArmourOptimizer::set_parameters(
@@ -557,5 +557,5 @@ void DualArmourOptimizer::summarize_constraints(
 }
 
 }; // namespace Armour
-}; // namespace Kinova
+}; // namespace Go1
 }; // namespace RAPTOR

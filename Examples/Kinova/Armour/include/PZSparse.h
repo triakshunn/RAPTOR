@@ -175,6 +175,11 @@ PZSparse sin(const PZSparse& a);
 
 PZSparse cos(const PZSparse& a);
 
+// Required by Pinocchio's math::atan2 dispatch (used internally in newer Pinocchio versions
+// e.g. in computeJointTorqueRegressor / special-orthogonal Lie group operations).
+// Computes atan2 at the center value and returns a scalar-valued PZSparse.
+PZSparse atan2(const PZSparse& y, const PZSparse& x);
+
 }; // namespace Armour
 }; // namespace Kinova
 }; // namespace RAPTOR

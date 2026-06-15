@@ -1,5 +1,5 @@
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 
 // You can find the following information in Kinova gen3 official documentation
 // https://artifactory.kinovaapps.com/ui/api/v1/download?repoKey=generic-documentation-public&path=Documentation%252FGen3%252FTechnical%2520documentation%252FUser%2520Guide%252FEN-UG-014-Gen3-Ultra-lightweight-user-guide-r9.1.pdf

@@ -23,7 +23,7 @@
 #include <boost/multiprecision/cpp_int.hpp>
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 namespace Armour {
 
 // Boost intervals
@@ -39,7 +39,7 @@ using Interval = bn::interval<
 >;
 
 }; // namespace Armour
-}; // namespace Kinova
+}; // namespace Go1
 }; // namespace RAPTOR
 
 #endif // ARMOUR_HEADER_H

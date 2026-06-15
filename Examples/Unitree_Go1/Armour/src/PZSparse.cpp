@@ -1,7 +1,7 @@
 #include "PZSparse.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 namespace Armour {
 
 using namespace boost::multiprecision;
@@ -1157,6 +1157,10 @@ PZSparse cos(const PZSparse& a) {
     return res;
 }
 
+PZSparse atan2(const PZSparse& y, const PZSparse& x) {
+    return PZSparse(std::atan2(y.center, x.center));
+}
+
 }; // namespace Armour
-}; // namespace Kinova
+}; // namespace Go1
 }; // namespace RAPTOR

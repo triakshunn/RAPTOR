@@ -1,7 +1,7 @@
 #include "DualArmourPybindWrapper.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 namespace Armour {
 
 DualArmourPybindWrapper::DualArmourPybindWrapper(const std::string urdf_filename1,
@@ -549,5 +549,5 @@ nb::tuple DualArmourPybindWrapper::analyze_solution() {
 }
 
 }; // namespace Armour
-}; // namespace Kinova
+}; // namespace Go1
 }; // namespace RAPTOR

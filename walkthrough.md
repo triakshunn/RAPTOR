@@ -10,15 +10,17 @@
 ## 0. Full Pipeline Execution Flow (How to Actually Run System ID)
 
 > [!NOTE]
-> Both friction and inertial ID are **offline calibration procedures** — not real-time. Friction ID is done once during robot commissioning. EE Inertial ID is re-done each time a new payload is attached (quick calibration before a task, still offline).
+> Friction ID is done once during robot commissioning. EE Inertial ID is re-done each time a new payload is attached (quick calibration before a task).
 
 ```
-Step 0 (one-time): Design exciting trajectory
+Step 0 (one-time): Design exciting (exciting here means which keeps the regressor matrix conditioning number as less as possible, friction sinusoidal is not exciting in that sense, since no regressor matrix there) trajectory
     → C++: KinovaRegressorExample      (outputs exciting-trajectory.csv)
-    → For Go1: need to adapt or skip (use sinusoidal directly)
+    → For Go1: need to adapt or skip (use sinusoidal directly?)
 
 Step 1: Collect trajectory data
-    → Simulation: test_sysid_inverse_dynamics.py (Python, pinocchio sim)
+    → Simulation: 
+        - For friction, its sysid_friction_trajectory_generator.py (Python, pinocchio sim)
+        - For inertia, TODO: Need to generate exciting trajectories, previously was done using ARMOUR for Kinove to satisfy safety constraints, joint limits, and minimizing conditioning number. I do not care for safety constraints here. Need to find code, to see how this is generated. 
     → Hardware:   play exciting trajectory on robot, record LowState at 500 Hz
     → Filter + downsample → q, q_d, q_dd, tau CSVs ("q_downsampled_N.csv" etc.)
 
@@ -28,8 +30,8 @@ Step 2: Run Friction ID  [OFFLINE, C++ binary]
               q_dd_downsampled_N.csv, tau_downsampled_N.csv
     → Output: friction_parameters_solution_N.csv
               [Fc_1..Fc_n, Fv_1..Fv_n, Ia_1..Ia_n]
-
-Step 3: Run Inertial ID  [OFFLINE, C++ binary OR Python wrapper]
+        
+Step 3: Run Inertial ID  [C++ binary OR Python wrapper]
     → C++:    TestEndEffectorParametersIdentification (synthetic data only, for testing)
     → C++:    TestEndEffectorParametersIdentificationMomentum (hardware .txt files)
     → Python: test_sysid_inverse_dynamics.py via end_effector_sysid_nanobind wrapper
@@ -967,4 +969,55 @@ Examples/Unitree-Go1/
    - (a) Write a pybind wrapper (like `EndEffectorIdentificationPybindWrapper.cpp`) — cleanest
    - (b) Save CSVs from Python, run C++ binary separately — simplest, works now
 3. **Armature handling**: Set `model.armature = Ia_true` in the simulator. For the C++ solver, the URDF model starts with `armature.setZero()`, and RNEA will compute inertial torques without armature. The solver then identifies `Ia` as part of the friction residual. This is correct behavior.
+
+
+## 11. Porting Kinova Example Modules to Unitree Go1 (C++ Best Practices)
+
+When porting a copied module (e.g., `CollisionAvoidanceTrajectory` or `CollisionAvoidanceInverseKinematics`) from the Kinova folder to Go1, follow this checklist to prevent compilation/namespace conflicts and ensure correct indexing.
+
+### 11.1 Namespace Isolation
+By default, the copied files will declare classes inside the `RAPTOR::Kinova` or `RAPTOR::Kinova::Armour` namespace. To prevent duplicate definition (ODR) errors:
+1. Rename all instances of `namespace Kinova` and `using namespace Kinova;` to `namespace Go1` and `using namespace Go1;`.
+2. Run these commands in the terminal targeting the subfolder:
+   ```bash
+   find /workspaces/raptor/Examples/Unitree_Go1/<SubfolderName>/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/namespace Kinova/namespace Go1/g' {} +
+   find /workspaces/raptor/Examples/Unitree_Go1/<SubfolderName>/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/using namespace Kinova;/using namespace Go1;/g' {} +
+   find /workspaces/raptor/Examples/Unitree_Go1/<SubfolderName>/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/Kinova::Armour/Go1::Armour/g' {} +
+   ```
+
+### 11.2 Constants Namespace & File Updates
+Kinova constants are declared in `KinovaConstants.h`. If you port a folder:
+1. Make sure `Go1Constants.h` is created with `namespace RAPTOR { namespace Go1 { ... } }`.
+2. Replace includes in your ported files:
+   ```diff
+   -#include "KinovaConstants.h"
+   +#include "Go1Constants.h"
+   ```
+
+### 11.3 CMake Targets Setup
+Declare separate library, executable, and nanobind modules in `/workspaces/raptor/Examples/Unitree_Go1/CMakeLists.txt` using the `Go1` prefix instead of `Kinova`.
+
+For example, to compile Go1 Armour:
+```cmake
+# Go1 Armour Library
+add_library(Go1Armourlib SHARED
+    Armour/src/PZSparse.cpp
+    Armour/src/RobotInfo.cpp
+    ...
+)
+
+# Go1 Armour Executable Example
+add_executable(Go1Armour_example Armour/ArmourExample.cpp)
+target_link_libraries(Go1Armour_example PUBLIC Go1Armourlib ...)
+
+# Go1 Python Bindings
+nanobind_add_module(go1_armour_nanobind NB_SHARED LTO ...)
+```
+
+### 11.4 URDF & YAML Configurations
+In the ported C++ example driver files (e.g. `ArmourExample.cpp`), update the loaded assets to point to the Go1 URDF model and YAML configurations:
+```cpp
+const std::string robot_model_file = "../Robots/unitree-go1/go1.urdf";
+const std::string robot_info_file = "../Examples/Unitree_Go1/Armour/Go1Info.yaml";
+```
 
