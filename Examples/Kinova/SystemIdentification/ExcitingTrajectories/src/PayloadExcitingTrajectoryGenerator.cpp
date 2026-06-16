@@ -45,7 +45,7 @@ bool PayloadExcitingTrajectoryGenerator::set_parameters(
                                                              q0_input,
                                                              q_d0_input);
 
-    // momentum regressor or torque (inverse dynamics) regressor
+    // momentum regressor or torque (inverse dynamics) regressor (using inverse dynamics regressor here, I think)
     ridPtr_ = std::make_shared<RegressorInverseDynamics>(model_input, 
                                                          trajPtr_,
                                                          true,

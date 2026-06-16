@@ -24,7 +24,7 @@ bool SafePayloadExcitingTrajectoryGenerator::set_parameters(
     }
 
     trajIntervalPtr_ = trajIntervalPtr_input;
-    num_time_steps = trajIntervalPtr_->num_time_steps;
+    num_time_steps = trajIntervalPtr_->num_time_steps;      
 
     dynPtr_ = dynPtr_input;
 

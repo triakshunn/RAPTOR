@@ -1021,3 +1021,10 @@ const std::string robot_model_file = "../Robots/unitree-go1/go1.urdf";
 const std::string robot_info_file = "../Examples/Unitree_Go1/Armour/Go1Info.yaml";
 ```
 
+## 12. Inertial Parameters Identification
+
+Approach 1: Use Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/KinovaRegressorExamplePayload.cpp as a template to build end effector trajectory generator for Go1 without 
+obstacles. You should be able to use the existing pipeline to get the calf inertial parameters then.
+
+Approach 2: Use the Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/KinovaRegressorExample.cpp as a template to build entire leg/entire body trajectory generator for Go1 and figure out 
+a way to modify the end effector parameter estimation pipeline to work this out. 

@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
     model.armature.setZero();
 
     // Define the indices of identifiable parameters for the Kinova robot, determined solely by its kinematic model
-    // Refer to README on how to get this information for different robots
+    // Refer to README on how to get this information for different robots 
     Eigen::VectorXi independent_param_inds(43);
     independent_param_inds << 9, 11, 12, 14, 19, 18, 17, 15, 21, 22, 24, 29, 28, 27, 25, 31, 32, 34, 39, 38, 37, 35, 41, 42, 44, 49, 48, 47, 45, 51, 52, 54, 59, 58, 57, 55, 61, 62, 64, 69, 68, 67, 65;
 
@@ -36,31 +36,34 @@ int main(int argc, char* argv[]) {
     std::srand(static_cast<unsigned int>(time(0)));
     Eigen::VectorXd z = 0.5 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv);
 
-    // Define obstacles
-    std::vector<Eigen::Vector3d> boxCenters = {
-        Eigen::Vector3d(0.0, 0.0, 0.18), // floor
-        Eigen::Vector3d(0.53, 0.49, 0.56), // back wall
-        Eigen::Vector3d(-0.39, -0.84, 0.56), // bar near the control
-        Eigen::Vector3d(-0.39, -0.17, 0.56), // bar bewteen 10 and 20 change to wall
-        Eigen::Vector3d(0.0, 0.0, 1.12), // ceiling
-        Eigen::Vector3d(0.47, -0.09, 1.04) // top camera
-    };
-    std::vector<Eigen::Vector3d> boxOrientations = {
-        Eigen::Vector3d(0.0, 0.0, 0.0),
-        Eigen::Vector3d(0.0, 0.0, 0.0),
-        Eigen::Vector3d(0.0, 0.0, 0.0),
-        Eigen::Vector3d(0.0, 0.0, 0.0),
-        Eigen::Vector3d(0.0, 0.0, 0.0),
-        Eigen::Vector3d(0.0, 0.0, 0.0)
-    };
-    std::vector<Eigen::Vector3d> boxSizes = {
-        Eigen::Vector3d(5.0, 5.0, 0.01),
-        Eigen::Vector3d(5.0, 0.05, 1.12),
-        Eigen::Vector3d(0.05, 0.05, 1.12),
-        Eigen::Vector3d(0.05, 1.28, 1.28),
-        Eigen::Vector3d(5, 5, 0.05),
-        Eigen::Vector3d(0.15, 0.15, 0.15)
-    };
+    // Define obstacles (not needed)
+    std::vector<Eigen::Vector3d> boxCenters = {};
+    std::vector<Eigen::Vector3d> boxOrientations = {};
+    std::vector<Eigen::Vector3d> boxSizes = {};
+    // std::vector<Eigen::Vector3d> boxCenters = {
+    //     Eigen::Vector3d(0.0, 0.0, 0.18), // floor
+    //     Eigen::Vector3d(0.53, 0.49, 0.56), // back wall
+    //     Eigen::Vector3d(-0.39, -0.84, 0.56), // bar near the control
+    //     Eigen::Vector3d(-0.39, -0.17, 0.56), // bar bewteen 10 and 20 change to wall
+    //     Eigen::Vector3d(0.0, 0.0, 1.12), // ceiling
+    //     Eigen::Vector3d(0.47, -0.09, 1.04) // top camera
+    // };
+    // std::vector<Eigen::Vector3d> boxOrientations = {
+    //     Eigen::Vector3d(0.0, 0.0, 0.0),
+    //     Eigen::Vector3d(0.0, 0.0, 0.0),
+    //     Eigen::Vector3d(0.0, 0.0, 0.0),
+    //     Eigen::Vector3d(0.0, 0.0, 0.0),
+    //     Eigen::Vector3d(0.0, 0.0, 0.0),
+    //     Eigen::Vector3d(0.0, 0.0, 0.0)
+    // };
+    // std::vector<Eigen::Vector3d> boxSizes = {
+    //     Eigen::Vector3d(5.0, 5.0, 0.01),
+    //     Eigen::Vector3d(5.0, 0.05, 1.12),
+    //     Eigen::Vector3d(0.05, 0.05, 1.12),
+    //     Eigen::Vector3d(0.05, 1.28, 1.28),
+    //     Eigen::Vector3d(5, 5, 0.05),
+    //     Eigen::Vector3d(0.15, 0.15, 0.15)
+    // };
 
     // Define limits buffer
     Eigen::VectorXd joint_limits_buffer(model.nq);
