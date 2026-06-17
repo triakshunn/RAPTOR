@@ -1,3 +1,4 @@
+#include "Go1Constants.h"
 #include "PayloadExcitingTrajectoryGenerator.h"
 
 using namespace RAPTOR;
@@ -22,12 +23,23 @@ int main(int argc, char *argv[]) {
   const int degree = 3;
   const double base_frequency = 2.0 * M_PI / T;
 
-  // start from a specific static configuration
-  Eigen::VectorXd q0(model.nv);
-  q0 << 0.0, 0.8, -1.6, // FR leg
-      0.0, 0.8, -1.6,   // FL leg
-      0.0, 0.8, -1.6,   // RR leg
-      0.0, 0.8, -1.6;   // RL leg
+  // Nominal positions for frozen legs (prone: body flat, feet tucked up).
+  // Verified via Pinocchio FK: foot Z ≈ +0.037 m (above body) — legs curled
+  // tight.
+  Eigen::Map<const Eigen::VectorXd> q_prone(PRONE_POSITIONS, NUM_JOINTS);
+
+  // Active leg to excite (FR=0, FL=1, RR=2, RL=3).
+  // Only this leg moves; the other 3 are frozen at q_prone.
+  const int active_leg = 0; // 0 = FR (front-right)
+
+  // Excitation center for the active leg (near stand pose, within URDF limits).
+  // hip ∈ [-0.863, 0.863], thigh ∈ [-0.686, 4.501], calf ∈ [-2.818, -0.888]
+  const Eigen::Vector3d q_active_leg(0.0, 0.8, -1.6);
+
+  // Build q0: active leg at excitation center, all others at prone.
+  Eigen::VectorXd q0 = q_prone;                 // start all legs at prone
+  q0.segment<3>(active_leg * 3) = q_active_leg; // overwrite active leg
+
   Eigen::VectorXd q_d0 = Eigen::VectorXd::Zero(model.nv);
 
   // Define initial guess
@@ -140,7 +152,7 @@ int main(int argc, char *argv[]) {
   if (mynlp->ifFeasible) {
     std::shared_ptr<Trajectories> traj =
         std::make_shared<FixedFrequencyFourierCurves>(
-            T, 5000, model.nv, TimeDiscretization::Uniform, degree,
+            T, 1000, model.nv, TimeDiscretization::Uniform, degree,
             base_frequency, q0, q_d0);
     std::shared_ptr<RegressorInverseDynamics> rid =
         std::make_shared<RegressorInverseDynamics>(model, traj, true);
