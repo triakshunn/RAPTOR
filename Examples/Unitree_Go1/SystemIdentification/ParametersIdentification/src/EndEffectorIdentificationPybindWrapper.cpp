@@ -1,7 +1,7 @@
 #include "EndEffectorIdentificationPybindWrapper.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 
 EndEffectorIdentificationPybindWrapper::EndEffectorIdentificationPybindWrapper(const std::string urdf_filename,
                                                                                const nb_1d_double friction_parameters_input,

@@ -1,7 +1,7 @@
 #include "EndEffectorIdentificationMomentumPybindWrapper.h"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 
 EndEffectorIdentificationMomentumPybindWrapper::
     EndEffectorIdentificationMomentumPybindWrapper(

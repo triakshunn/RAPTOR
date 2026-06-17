@@ -5,7 +5,7 @@
 namespace nb = nanobind;
 
 using namespace RAPTOR;
-using namespace Kinova;
+using namespace Go1;
 
 NB_MODULE(end_effector_sysid_momentum_nanobind , m) {
     m.doc() = "nanobind end effector identification plugin";

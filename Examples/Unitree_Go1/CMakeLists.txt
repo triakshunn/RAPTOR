@@ -2,16 +2,22 @@
 add_library(Go1lib SHARED
     SystemIdentification/ParametersIdentification/src/FrictionParametersIdentification.cpp
     SystemIdentification/ParametersIdentification/src/EndEffectorParametersIdentification.cpp
-    SystemIdentification/ParametersIdentification/src/EndEffectorParametersIdentificationMomentum.cpp)
+    SystemIdentification/ParametersIdentification/src/EndEffectorParametersIdentificationMomentum.cpp
+    SystemIdentification/ExcitingTrajectories/src/PayloadExcitingTrajectoryGenerator.cpp
+    SystemIdentification/ExcitingTrajectories/src/ExcitingTrajectoryGenerator.cpp
+    CollisionAvoidanceTrajectory/src/KinovaCustomizedConstraints.cpp) 
 
 target_include_directories(Go1lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include
     ${CMAKE_SOURCE_DIR}/Trajectories/include
     ${CMAKE_SOURCE_DIR}/Costs/include
     ${CMAKE_SOURCE_DIR}/Constraints/include
     ${CMAKE_SOURCE_DIR}/Optimization/include
     ${CMAKE_SOURCE_DIR}/Utils/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Armour/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/CollisionAvoidanceTrajectory/include
 )
 
 target_link_libraries(Go1lib PUBLIC
@@ -45,6 +51,24 @@ target_link_libraries(Go1_SysidFriction_test PUBLIC
 target_compile_options(Go1_SysidFriction_test PUBLIC
     ${PINOCCHIO_FLAGS})
 
+add_executable(Go1_Sysid_end_effector_traj
+    SystemIdentification/ExcitingTrajectories/Go1_RegressorExample_end_effector.cpp)
+target_include_directories(Go1_Sysid_end_effector_traj PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include)
+target_link_libraries(Go1_Sysid_end_effector_traj PUBLIC
+    trajlib
+    IDlib
+    Conslib
+    Optlib
+    Go1lib
+    ipopt
+    coinhsl
+    ${Boost_LIBRARIES}
+    pinocchio::pinocchio)
+target_compile_options(Go1_Sysid_end_effector_traj PUBLIC
+    ${PINOCCHIO_FLAGS})
+
 # ==============================================================================
 # Go1 Armour
 # ==============================================================================
@@ -57,6 +81,7 @@ add_library(Go1Armourlib SHARED
     Armour/src/PZDynamics.cpp
     Armour/src/ArmourOptimizer.cpp
     Armour/src/DualArmourOptimizer.cpp
+    SystemIdentification/ExcitingTrajectories/src/SafePayloadExcitingTrajectoryGenerator.cpp
 )
 
 target_include_directories(Go1Armourlib PUBLIC
@@ -67,6 +92,7 @@ target_include_directories(Go1Armourlib PUBLIC
     ${CMAKE_SOURCE_DIR}/Constraints/include
     ${CMAKE_SOURCE_DIR}/Optimization/include
     ${CMAKE_SOURCE_DIR}/Utils/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include
 )
 
 target_link_libraries(Go1Armourlib PUBLIC

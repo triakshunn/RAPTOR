@@ -1,4 +1,4 @@
-#include "ExcitingTrajectoryGenerator.h"
+#include "PayloadExcitingTrajectoryGenerator.h"
 
 using namespace RAPTOR;
 using namespace Go1;
@@ -16,14 +16,6 @@ int main(int argc, char *argv[]) {
   model.damping.setZero();
   model.armature.setZero();
 
-  // Define the indices of identifiable parameters for the Go1 robot, determined
-  // solely by its kinematic model Refer to README on how to get this
-  // information for different robots
-  Eigen::VectorXi independent_param_inds(43);
-  independent_param_inds << 9, 11, 12, 14, 19, 18, 17, 15, 21, 22, 24, 29, 28,
-      27, 25, 31, 32, 34, 39, 38, 37, 35, 41, 42, 44, 49, 48, 47, 45, 51, 52,
-      54, 59, 58, 57, 55, 61, 62, 64, 69, 68, 67, 65;
-
   // Define trajectory parameters
   const double T = 10.0;
   const int N = 128;
@@ -32,19 +24,22 @@ int main(int argc, char *argv[]) {
 
   // start from a specific static configuration
   Eigen::VectorXd q0(model.nv);
-  q0 << -1.16396061, 0.34987045, -3.68094828, -1.75466411, 0.19968747,
-      -1.09177839, -0.19841415;
+  q0 << 0.0, 0.8, -1.6, // FR leg
+      0.0, 0.8, -1.6,   // FL leg
+      0.0, 0.8, -1.6,   // RR leg
+      0.0, 0.8, -1.6;   // RL leg
   Eigen::VectorXd q_d0 = Eigen::VectorXd::Zero(model.nv);
 
   // Define initial guess
   std::srand(static_cast<unsigned int>(time(0)));
   Eigen::VectorXd z =
-      0.5 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv);
+      1.0 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv).array();
 
-  // Define obstacles (not needed)
-  std::vector<Eigen::Vector3d> boxCenters = {};
-  std::vector<Eigen::Vector3d> boxOrientations = {};
-  std::vector<Eigen::Vector3d> boxSizes = {};
+  // Define obstacles
+  std::vector<Eigen::Vector3d> boxCenters{};
+  std::vector<Eigen::Vector3d> boxOrientations{};
+  std::vector<Eigen::Vector3d> boxSizes{};
+
   // std::vector<Eigen::Vector3d> boxCenters = {
   //     Eigen::Vector3d(0.0, 0.0, 0.18), // floor
   //     Eigen::Vector3d(0.53, 0.49, 0.56), // back wall
@@ -74,17 +69,18 @@ int main(int argc, char *argv[]) {
   Eigen::VectorXd joint_limits_buffer(model.nq);
   joint_limits_buffer.setConstant(0.02);
   Eigen::VectorXd velocity_limits_buffer(model.nq);
-  velocity_limits_buffer.setConstant(0.05);
+  // velocity_limits_buffer.setConstant(0.05);
+  velocity_limits_buffer.setZero();
   Eigen::VectorXd torque_limits_buffer(model.nq);
   torque_limits_buffer.setConstant(0.5);
 
-  // Initialize Go1 optimizer
-  SmartPtr<ExcitingTrajectoryGenerator> mynlp =
-      new ExcitingTrajectoryGenerator();
+  // Initialize optimizer
+  SmartPtr<PayloadExcitingTrajectoryGenerator> mynlp =
+      new PayloadExcitingTrajectoryGenerator();
   try {
     mynlp->set_parameters(z, T, N, degree, base_frequency, q0, q_d0, model,
-                          independent_param_inds, boxCenters, boxOrientations,
-                          boxSizes, joint_limits_buffer, velocity_limits_buffer,
+                          boxCenters, boxOrientations, boxSizes,
+                          joint_limits_buffer, velocity_limits_buffer,
                           torque_limits_buffer);
     mynlp->constr_viol_tol = 1e-5;
   } catch (std::exception &e) {
@@ -97,10 +93,10 @@ int main(int argc, char *argv[]) {
 
   app->Options()->SetNumericValue("tol", 1e-6);
   app->Options()->SetNumericValue("constr_viol_tol", mynlp->constr_viol_tol);
-  app->Options()->SetNumericValue("max_wall_time", 60.0);
+  app->Options()->SetNumericValue("max_wall_time", 20.0);
   app->Options()->SetIntegerValue("print_level", 5);
   app->Options()->SetStringValue("mu_strategy", "adaptive");
-  app->Options()->SetStringValue("linear_solver", "ma57");
+  app->Options()->SetStringValue("linear_solver", "ma86");
   app->Options()->SetStringValue("ma57_automatic_scaling", "yes");
   if (mynlp->enable_hessian) {
     app->Options()->SetStringValue("hessian_approximation", "exact");
@@ -151,8 +147,9 @@ int main(int argc, char *argv[]) {
     rid->compute(mynlp->solution, false);
 
     if (argc > 1) {
-      const std::string outputfolder = "../Examples/Go1/SystemIdentification/"
-                                       "ExcitingTrajectories/data/T10_d3/";
+      const std::string outputfolder =
+          "../Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/"
+          "data/front_right_calf/";
       std::ofstream solution(outputfolder + "exciting-solution-" +
                              std::string(argv[1]) + ".csv");
       std::ofstream trajectory(outputfolder + "exciting-trajectory-" +
@@ -162,10 +159,10 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i < mynlp->solution.size(); i++) {
         solution << mynlp->solution(i) << std::endl;
       }
-      for (int i = 0; i < 7; ++i) {
+      for (int i = 0; i < 12; ++i) {
         solution << q0(i) << std::endl;
       }
-      for (int i = 0; i < 7; ++i) {
+      for (int i = 0; i < 12; ++i) {
         solution << q_d0(i) << std::endl;
       }
       solution << base_frequency << std::endl;
@@ -175,6 +172,7 @@ int main(int argc, char *argv[]) {
         trajectory << traj->tspan(i) << ' ';
         trajectory << traj->q(i).transpose() << ' ';
         trajectory << traj->q_d(i).transpose() << ' ';
+        trajectory << traj->q_dd(i).transpose() << ' ';
         trajectory << rid->tau(i).transpose() << std::endl;
       }
     } else {
@@ -185,10 +183,10 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i < mynlp->solution.size(); i++) {
         solution << mynlp->solution(i) << std::endl;
       }
-      for (int i = 0; i < 7; ++i) {
+      for (int i = 0; i < model.nv; ++i) {
         solution << q0(i) << std::endl;
       }
-      for (int i = 0; i < 7; ++i) {
+      for (int i = 0; i < model.nv; ++i) {
         solution << q_d0(i) << std::endl;
       }
       solution << base_frequency << std::endl;

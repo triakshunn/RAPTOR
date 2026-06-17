@@ -12,7 +12,7 @@
 #include "pinocchio/algorithm/joint-configuration.hpp"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 
 namespace nb = nanobind;
 

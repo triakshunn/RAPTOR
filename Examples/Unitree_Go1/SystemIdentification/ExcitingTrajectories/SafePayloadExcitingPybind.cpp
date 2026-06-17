@@ -5,7 +5,7 @@
 namespace nb = nanobind;
 
 using namespace RAPTOR;
-using namespace Kinova;
+using namespace Go1;
 using namespace Armour;
 
 NB_MODULE(safe_payload_exciting_nanobind, m) {

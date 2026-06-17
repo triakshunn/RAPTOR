@@ -12,7 +12,7 @@
 #include "pinocchio/parsers/urdf.hpp"
 
 namespace RAPTOR {
-namespace Kinova {
+namespace Go1 {
 
 namespace nb = nanobind;
 
