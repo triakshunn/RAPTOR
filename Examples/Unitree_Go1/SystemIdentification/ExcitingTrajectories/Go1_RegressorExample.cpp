@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
   const double base_frequency = 2.0 * M_PI / T;
 
   Eigen::VectorXd q0(model.nv);
-  q0 << 0.0, 0.8, -1.6;
+  q0 << 0.0, 0.8, -1.6; // middle of the joint limits
 
   Eigen::VectorXd q_d0 = Eigen::VectorXd::Zero(model.nv);
 
@@ -166,10 +166,10 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i < mynlp->solution.size(); i++) {
         solution << mynlp->solution(i) << std::endl;
       }
-      for (int i = 0; i < 12; ++i) {
+      for (int i = 0; i < model.nv; ++i) {
         solution << q0(i) << std::endl;
       }
-      for (int i = 0; i < 12; ++i) {
+      for (int i = 0; i < model.nv; ++i) {
         solution << q_d0(i) << std::endl;
       }
       solution << base_frequency << std::endl;
