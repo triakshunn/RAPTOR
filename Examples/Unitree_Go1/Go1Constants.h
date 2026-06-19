@@ -5,44 +5,34 @@
 namespace RAPTOR {
 namespace Go1 {
 
-constexpr int NUM_JOINTS = 12;
+constexpr int NUM_JOINTS = 3;
 
 constexpr double JOINT_LIMITS_LOWER[NUM_JOINTS] = {
-    -49.45, -39.3, -161.46, // FR (hip, thigh, calf)
-    -49.45, -39.3, -161.46, // FL
-    -49.45, -39.3, -161.46, // RR
-    -49.45, -39.3, -161.46  // RL
+    -49.45,
+    -39.3,
+    -161.46, // FR (hip, thigh, calf) (-0.863, -.686, -2.818)
 };
 
 constexpr double JOINT_LIMITS_UPPER[NUM_JOINTS] = {
-    49.45, 257.9, -50.88, // FR
-    49.45, 257.9, -50.88, // FL
-    49.45, 257.9, -50.88, // RR
-    49.45, 257.9, -50.88  // RL
+    49.45,
+    257.9,
+    -50.88, // FR (0.863, 4.501, -0.888)
 };
 
-constexpr double VELOCITY_LIMITS_LOWER[NUM_JOINTS] = {
-    -1724.6, -1724.6, -1149.3, -1724.6, -1724.6, -1149.3,
-    -1724.6, -1724.6, -1149.3, -1724.6, -1724.6, -1149.3};
+constexpr double VELOCITY_LIMITS_LOWER[NUM_JOINTS] = {-1724.6, -1724.6,
+                                                      -1149.3};
 
-constexpr double VELOCITY_LIMITS_UPPER[NUM_JOINTS] = {
-    1724.6, 1724.6, 1149.3, 1724.6, 1724.6, 1149.3,
-    1724.6, 1724.6, 1149.3, 1724.6, 1724.6, 1149.3};
+constexpr double VELOCITY_LIMITS_UPPER[NUM_JOINTS] = {1724.6, 1724.6, 1149.3};
 
-constexpr double ACCELERATION_LIMITS_LOWER[NUM_JOINTS] = {
-    -10000.0, -10000.0, -10000.0, -10000.0, -10000.0, -10000.0,
-    -10000.0, -10000.0, -10000.0, -10000.0, -10000.0, -10000.0};
+constexpr double ACCELERATION_LIMITS_LOWER[NUM_JOINTS] = {-10000.0, -10000.0,
+                                                          -10000.0};
 
-constexpr double ACCELERATION_LIMITS_UPPER[NUM_JOINTS] = {
-    10000.0, 10000.0, 10000.0, 10000.0, 10000.0, 10000.0,
-    10000.0, 10000.0, 10000.0, 10000.0, 10000.0, 10000.0};
+constexpr double ACCELERATION_LIMITS_UPPER[NUM_JOINTS] = {10000.0, 10000.0,
+                                                          10000.0};
 
-constexpr double TORQUE_LIMITS_LOWER[NUM_JOINTS] = {
-    -23.7, -23.7, -35.55, -23.7, -23.7, -35.55,
-    -23.7, -23.7, -35.55, -23.7, -23.7, -35.55};
+constexpr double TORQUE_LIMITS_LOWER[NUM_JOINTS] = {-23.7, -23.7, -35.55};
 
-constexpr double TORQUE_LIMITS_UPPER[NUM_JOINTS] = {
-    23.7, 23.7, 35.55, 23.7, 23.7, 35.55, 23.7, 23.7, 35.55, 23.7, 23.7, 35.55};
+constexpr double TORQUE_LIMITS_UPPER[NUM_JOINTS] = {23.7, 23.7, 35.55};
 
 constexpr double GRAVITY = -9.81; // m/s^2
 
@@ -61,10 +51,9 @@ constexpr double GRAVITY = -9.81; // m/s^2
 // Foot Z ≈ -0.265 m relative to body origin.
 // Used as the excitation center for friction SysID.
 constexpr double STAND_POSITIONS[NUM_JOINTS] = {
-    0.0, 0.9, -1.8, // FR
-    0.0, 0.9, -1.8, // FL
-    0.0, 0.9, -1.8, // RR
-    0.0, 0.9, -1.8  // RL
+    0.0,
+    0.9,
+    -1.8, // FR
 };
 
 // Prone (lying flat) pose — legs folded tight against the belly.
@@ -73,10 +62,9 @@ constexpr double STAND_POSITIONS[NUM_JOINTS] = {
 // Use this as q_nominal for legs NOT being excited during inertial SysID,
 // so the robot can lay flat while only one leg moves.
 constexpr double PRONE_POSITIONS[NUM_JOINTS] = {
-    0.0, 3.5, -2.8, // FR
-    0.0, 3.5, -2.8, // FL
-    0.0, 3.5, -2.8, // RR
-    0.0, 3.5, -2.8  // RL
+    0.0,
+    3.5,
+    -2.8, // FR
 };
 
 }; // namespace Go1

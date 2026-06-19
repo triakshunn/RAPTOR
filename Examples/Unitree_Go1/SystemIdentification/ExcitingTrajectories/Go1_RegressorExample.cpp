@@ -25,22 +25,24 @@ int main(int argc, char *argv[]) {
 
   // Define trajectory parameters
   const double T = 10.0;
-  const int N = 128;
+  const int N = 1;
   const int degree = 3;
   const double base_frequency = 2.0 * M_PI / T;
 
   Eigen::VectorXd q0(model.nv);
-  q0 << 0.0, 0.8, -1.6; // middle of the joint limits
+  q0 << 0.0, 1.9, -1.85; // middle of the joint limits
 
   Eigen::VectorXd q_d0 = Eigen::VectorXd::Zero(model.nv);
 
   // Define initial guess
   std::srand(static_cast<unsigned int>(time(0)));
   Eigen::VectorXd z =
-      1.0 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv)
+      0.1 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv)
                 .array(); // this comes from the fourier series coefficients
                           // used for trajectory generation
-
+  for (int j = 0; j < model.nv; j++) {
+    z[j * (2 * degree + 1)] = 0.0;
+  }
   // Define obstacles
   std::vector<Eigen::Vector3d> boxCenters{};
   std::vector<Eigen::Vector3d> boxOrientations{};

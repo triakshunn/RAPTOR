@@ -29,7 +29,11 @@ int main(int argc, char* argv[]) {
 
     // Define initial guess
     std::srand(static_cast<unsigned int>(time(0)));
-    Eigen::VectorXd z = 1.0 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv).array();
+    Eigen::VectorXd z = 0.1 * Eigen::VectorXd::Random((2 * degree + 1) * model.nv).array();
+    // Zero DC acceleration coefficient per joint to prevent parabolic trajectory drift
+    for (int j = 0; j < model.nv; j++) {
+        z[j * (2 * degree + 1)] = 0.0;
+    }
 
     // Define obstacles
     std::vector<Eigen::Vector3d> boxCenters = {
@@ -94,7 +98,7 @@ int main(int argc, char* argv[]) {
 
     app->Options()->SetNumericValue("tol", 1e-6);
     app->Options()->SetNumericValue("constr_viol_tol", mynlp->constr_viol_tol);
-	app->Options()->SetNumericValue("max_wall_time", 20.0);
+	app->Options()->SetNumericValue("max_wall_time", 120.0);
 	app->Options()->SetIntegerValue("print_level", 5);
     app->Options()->SetStringValue("mu_strategy", "adaptive");
     app->Options()->SetStringValue("linear_solver", "ma86");
