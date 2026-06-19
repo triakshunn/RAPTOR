@@ -19,28 +19,6 @@ Go1 Kp:Kd torque values taken from here: https://arxiv.org/pdf/2304.09834
 '''
 
 sys.path.append("/workspaces/RAPTOR/build/lib")
-# import end_effector_sysid_nanobind
-
-# def desired_trajectory(t):
-#     """
-#     Computes the desired trajectory for a 7-DOF system based on sinusoidal functions.
-
-#     Parameters:
-#     t (float): The time variable.
-
-#     Returns:
-#     tuple: A tuple containing:
-#         - qd (numpy.ndarray): The desired joint positions, a 7-element array where each element is sin(t).
-#         - qd_d (numpy.ndarray): The desired joint velocities, a 7-element array where each element is cos(t).
-#         - qd_dd (numpy.ndarray): The desired joint accelerations, a 7-element array where each element is -sin(t).
-        
-#     Notes:
-#         This trajectory is not an exciting one, so the results may not be good on hardware.
-#     """
-#     qd = np.sin(t) * np.ones(7)
-#     qd_d = np.cos(t) * np.ones(7)
-#     qd_dd = -np.sin(t) * np.ones(7)
-#     return qd, qd_d, qd_dd
 
 def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
     """
@@ -151,26 +129,6 @@ def desired_trajectory_full(t, active_joint_idx, nq, q_nominal): #### active_joi
         qd_dd[active_joint] = qd_dd_active
 
     return qd, qd_d, qd_dd
-
-# def controller(q, v, qd, qd_d, qd_dd):
-#     """
-#     Computes the control torque for a system using a PD control law.
-
-#     Parameters:
-#         q (float or array-like): Current position of the system.
-#         v (float or array-like): Current velocity of the system.
-#         qd (float or array-like): Desired position of the system.
-#         qd_d (float or array-like): Desired velocity of the system.
-#         qd_dd (float or array-like): Desired acceleration of the system (not used in this implementation).
-
-#     Returns:
-#         float or array-like: Control torque to be applied to the system.
-#     """
-    
-#     kp = 1000
-#     kd = 100
-#     tau = kp * (qd - q) + kd * (qd_d - v)
-#     return tau
 
 def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx):
     kp = np.ones(nv) * 40.0   # high stiffness for frozen joints
@@ -294,7 +252,7 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
         data_filtered[:, i] = filtfilt(b, a, data[:, i])
     return data_filtered
 
-def main(active_joint=0):
+def main(active_joint=0, inactive=False):
     if isinstance(active_joint, (int, np.integer)):
         active_joint = [active_joint]
     active_joint_str = "_".join(map(str, active_joint))
@@ -336,9 +294,16 @@ def main(active_joint=0):
     Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
     
     # Wrap the trajectory function using a lambda so it accepts only time 't'
-    traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal)
+    
+    if inactive:
+        traj_fn = lambda t: (q_nominal, np.zeros(model.nq), np.zeros(model.nq))
+        ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, [])
 
-    ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint) ### q's are  defined in the integrate function. 
+    else:
+        traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal)
+        ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint) ### q's are  defined in the integrate function. 
+
+
     
     # Run the safety verification BEFORE simulating
     verify_trajectory_safety(traj_fn, ctrl_fn, ts_sim, model, margin=0.05)
@@ -360,8 +325,11 @@ def main(active_joint=0):
     # # save the simulation results as a text file
     # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
     # traj_data_clipped = traj_data[2:-2, :]
-    
-    output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/200_20")) + "/"
+
+    if inactive:
+        output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/200_20")) + "/" ### TODO: need to change so I give argument for inactive with active leg so it makes corresponding files in same folder??
+    else:
+        output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/200_20")) + "/"
     
     qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
     vs_clipped   = vs[2:-2]
@@ -369,15 +337,18 @@ def main(active_joint=0):
 
 
     #### removing near zero velocity values to avoid chattering
-    v_threshold = 0.01
-    keep_mask = np.ones(len(vs_clipped), dtype=bool)
-    for j in active_joint:
-        keep_mask &= np.abs(vs_clipped[:, j]) >= v_threshold
-    qs_clipped   = qs_clipped[keep_mask]
-    vs_clipped   = vs_clipped[keep_mask]
-    taus_clipped = taus_clipped[keep_mask]
-    accs_filtered = accs_filtered[keep_mask]
+    if not inactive:
+        v_threshold = 0.01
+        keep_mask = np.ones(len(vs_clipped), dtype=bool)
+        for j in active_joint:
+            keep_mask &= np.abs(vs_clipped[:, j]) >= v_threshold
+        qs_clipped   = qs_clipped[keep_mask]
+        vs_clipped   = vs_clipped[keep_mask]
+        taus_clipped = taus_clipped[keep_mask]
+        accs_filtered = accs_filtered[keep_mask]
     
+    else:
+        
     print(f"q_s clipped is {qs_clipped}")
     print(f"v_s clipped is {vs_clipped}")
     print(f"q_dd_clipped is {accs_filtered}")
@@ -445,6 +416,8 @@ def main(active_joint=0):
 
     plt.show()
     print("Plots complete.")
+    
+    ######### MESHCAT Implementation ##################
     # # Start Meshcat viewer
     # viz = MeshcatVisualizer(model_vis, collision_model, visual_model)
     # viz.initViewer(open=True)   # opens browser tab automatically
@@ -561,11 +534,14 @@ def main(active_joint=0):
     # print("end effector inertial parameters:")
     # print("solution:\n", theta_solution)
     # print("groundtruth:\n", model.inertias[-1].toDynamicParameters())
+    ##############################################
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Go1 SysID Friction Trajectory Generator')
+    parser = argparse.ArgumentParser(description='Go1 SysID Trajectory Generator')
     parser.add_argument('--joint', type=str, nargs='+', default=['0'],
                         help='Active joint index or indices to excite (e.g. 0 or 0,1,2 or 0 1 2)')
+    parser.add_argument('--inactive', action='store_true',
+                        help='Generate hold-at-prone data for inactive legs (no exciting motion)')
     args = parser.parse_args()
     
     active_joints = []
@@ -573,4 +549,4 @@ if __name__ == "__main__":
         for subitem in item.replace(',', ' ').split():
             active_joints.append(int(subitem))
             
-    main(active_joint=active_joints)
+    main(active_joint=active_joints, inactive=args.inactive)

@@ -832,271 +832,256 @@ const std::string robot_info_file = "../Examples/Unitree_Go1/Armour/Go1Info.yaml
 
 ---
 
-## 11. Per-Leg Inertial SysID — Architecture & Implementation Plan
+## 11. Per-Leg SysID — Final Architecture (Fixed Base)
 
 > [!IMPORTANT]
-> **This section defines the next implementation phase.** The core insight: the exciting trajectory optimizer and the inactive-leg hold controller are **two separate problems** and must be handled separately. Do NOT mix them into one optimizer pass.
+> **Physical setup decision**: The robot trunk is **C-clamped to a rigid table**. This makes the base truly fixed, completely decoupling all leg branches from each other. Inactive legs can be in any configuration (hanging, roped, free) and require **no motor torques and no controller**. The simulation uses only the active leg's 3-DOF per-leg URDF for both friction and inertial SysID.
 
-### 11.1 The Problem with the Current Approach
+### 11.1 Why fixed base decouples inactive legs
 
-`Go1_RegressorExample_end_effector.cpp` runs IPOPT over **84 decision variables** (`(2×degree+1) × 12 = 7×12`), meaning ALL 12 joints are optimized simultaneously. The inactive legs are constrained only by joint limits, not truly frozen. Problems:
-
-1. Regressor matrix is nearly rank-deficient — inactive joints contribute near-zero rows → terrible condition number for the estimator.
-2. Starting `q0` for inactive legs at calf = `-2.818` (URDF hard limit) violates the `0.02 rad` optimizer buffer → immediate infeasibility at iteration 0.
-3. IPOPT wastes effort on 9 joints that shouldn't move.
-
-### 11.2 The Correct Architecture
+For an open kinematic chain with a **truly fixed base**, the Newton-Euler equations for the active leg (e.g., FR) are:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  EXCITING TRAJECTORY DESIGN  (per-leg URDF, C++ IPOPT)         │
-│  Input:  go1_FR.urdf  (trunk + FR 3 joints, nv=3)              │
-│  Output: exciting-trajectory-FR-1.csv  (3-col q/v/tau)         │
-│          exciting-solution-FR-1.csv    (Fourier coefficients)   │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │ load trajectory
-┌──────────────────────▼──────────────────────────────────────────┐
-│  FORWARD SIMULATION  (full 12-DOF model, Python)                │
-│  Active leg  (e.g. FR joints 0,1,2): PD tracking → exciting    │
-│  Inactive legs (FL/RR/RL 3-11):      PD hold → prone position  │
-│  Output: q/v/acc/tau CSVs (12 columns each)                     │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────────┐
-│  PARAMETER IDENTIFICATION  (C++ IPOPT)                          │
-│  Input:  12-col CSVs + single-leg URDF (nv=3 regressor)        │
-│  Optimizes: inertial params of the active leg joints only       │
-└─────────────────────────────────────────────────────────────────┘
+τ_FR = M_FR(q_FR) · q̈_FR + C_FR(q_FR, q̇_FR) + g_FR(q_FR)
+```
+
+FL, RR, RL joint variables appear **nowhere** in this expression. They are on separate branches and are entirely absent from the FR regressor. Whatever the inactive legs do physically — hang free, swing, be roped — it has **zero effect** on the identified FR parameters.
+
+> [!NOTE]
+> This is a property of open kinematic chain **+** fixed base together. Open chain alone is not sufficient; the fixed base is the key condition. A C-clamp on the trunk satisfies this exactly.
+
+---
+
+### 11.2 Physical Setup
+
+```
+         ┌────────────────────────────────┐
+         │       RIGID TABLE              │
+         │   FL (free/resting)  ║  FR (active, hangs off edge)
+         │   ──────────────────[TRUNK]────────────── → RIGHT EDGE
+         │   RL (free/resting)  ║  RR (hangs, roped or free)
+         │              C-CLAMP ↕ (trunk bolted here)
+         └────────────────────────────────┘
+```
+
+- **Trunk**: C-clamped rigidly to table → truly fixed base
+- **FR**: hangs freely, executes exciting trajectory (or sinusoidal for friction)
+- **RR**: hangs on same side — free or roped — **irrelevant to model**
+- **FL, RL**: resting on table — **irrelevant to model**
+- **No motor torques needed on FL, RR, RL**
+
+---
+
+### 11.3 Architecture
+
+Both friction and inertial SysID follow the same pipeline. The only difference is the trajectory source for the active leg.
+
+```
+                    ┌──────────────────────────────────┐
+                    │  Go1_RegressorExample.cpp (C++)   │
+                    │  Input:  go1_FR.urdf (nv=3)       │
+                    │  Role:   Design optimal exciting   │
+                    │          trajectory offline        │
+                    │  Output: exciting-traj-1.csv       │
+                    └────────────────┬─────────────────┘
+                                     │ (inertial mode only)
+┌────────────────────────────────────▼────────────────────────────┐
+│  sysid_trajectory_generator.py  (Python, 3-DOF simulation)      │
+│                                                                  │
+│  --mode friction  --leg FR  --joint 0                            │
+│    Model:    go1_FR.urdf (nv=3)   ← fixed base                  │
+│    Traj:     multi-freq sinusoid for joint 0 (or 1, or 2)        │
+│    Inactive: not in model at all                                  │
+│    Output:   full_params_data/friction/FR/joint_0/               │
+│                                                                  │
+│  --mode inertial  --leg FR  --run 1                              │
+│    Model:    go1_FR.urdf (nv=3)   ← fixed base                  │
+│    Traj:     load exciting-trajectory-1.csv, replay via PD       │
+│    Inactive: not in model at all                                  │
+│    Output:   full_params_data/inertial/FR/                       │
+└────────────────────────────────────┬────────────────────────────┘
+                                     │
+               ┌─────────────────────┴─────────────────────┐
+               │                                           │
+  ┌────────────▼──────────────┐           ┌───────────────▼───────────────┐
+  │  FrictionParametersID     │           │  EndEffectorParametersID       │
+  │  (C++, go1_FR.urdf)       │           │  (C++, go1_FR.urdf)            │
+  │  Input:  friction/ CSVs   │           │  Input:  inertial/ CSVs        │
+  │  Output: Fc, Fv, Ia (×3)  │           │  Output: inertial params (×3)  │
+  └───────────────────────────┘           └────────────────────────────────┘
 ```
 
 ---
 
-### 11.3 Task 1 — Refactor `sysid_friction_trajectory_generator.py` for Inactive Legs
+### 11.4 Mode comparison
 
-**File:** [`Examples/Unitree_Go1/python/sysid_friction_trajectory_generator.py`](file:///workspaces/raptor/Examples/Unitree_Go1/python/sysid_friction_trajectory_generator.py)
+| | `--mode friction` | `--mode inertial` |
+|---|---|---|
+| URDF / model | `go1_FR.urdf` (nv=3) | `go1_FR.urdf` (nv=3) |
+| Active trajectory | Multi-freq sinusoid on **all 3 joints simultaneously** | Load `exciting-trajectory-<run>.csv` |
+| Active joint spec | `--leg FR` (all 3 joints, different freqs) | `--leg FR` (all 3 joints simultaneously) |
+| Inactive joints | **Not in model** | **Not in model** |
+| Inactive leg controller | None needed | None needed |
+| CSV output columns | 3 (nv=3) | 3 (nv=3) |
+| Output folder | `full_params_data/friction/FR/` | `full_params_data/inertial/FR/` |
+| Feeds into | `FrictionParametersIdentification` | `EndEffectorParametersIdentification` |
 
-**Goal:** Add `--inactive` flag so the same file generates a hold-at-prone simulation for the 3 frozen legs, reusing the existing `controller()` and gains.
+---
 
-#### What to change
-
-Add flag `--inactive` (boolean). When set:
-- Skip `desired_trajectory_friction()` entirely.
-- Desired trajectory = `q_prone` constant at all times, zero velocity and acceleration.
-- Use existing `controller()` with **high stiffness for all joints** (no active/frozen distinction).
-- Skip the near-zero velocity threshold mask (joints aren't supposed to move).
-- Save to a separate output folder: `full_params_data/inactive/`.
+### 11.5 Key implementation details for `sysid_trajectory_generator.py`
 
 ```python
-# New CLI flag alongside --joint:
-parser.add_argument('--inactive', action='store_true',
-    help='Generate hold-at-prone data for inactive legs (no exciting motion)')
+# CLI — symmetric for both modes, both use --leg
+parser.add_argument('--mode', choices=['friction', 'inertial'], required=True)
+parser.add_argument('--leg', type=str, default='FR',
+                    help='Which leg: FR|FL|RR|RL')
+parser.add_argument('--run', type=int, default=1,
+                    help='Run ID matching exciting-trajectory-<run>.csv — inertial mode only')
 
-# In main():
-if args.inactive:
-    q_nominal = np.array([0.0, 3.5, -2.8] * 4)   # PRONE_POSITIONS from Go1Constants.h
-    active_joint = list(range(12))                 # treat all as "active" for PD hold
-    traj_fn = lambda t: (q_nominal, np.zeros(12), np.zeros(12))
-    # Use same controller() — high kp holds all joints at prone
-    # Skip v_threshold masking
-    output_dir = ".../full_params_data/inactive/"
-else:
-    # existing exciting trajectory logic — UNCHANGED
-    ...
-```
+# Model: always use the per-leg URDF (nv=3, fixed base)
+urdf = f"../Robots/unitree-go1/go1_{leg}.urdf"
+model = pin.buildModelFromUrdf(urdf)   # nv=3
+data  = pin.Data(model)
 
-#### Output files (inactive mode)
-```
-full_params_data/inactive/
-  q_downsampled_inactive.csv       (12 cols, all joints at prone)
-  q_d_downsampled_inactive.csv     (12 cols, near-zero)
-  q_dd_downsampled_inactive.csv    (12 cols, near-zero)
-  tau_downsampled_inactive.csv     (12 cols, gravity compensation torques only)
+# Trajectory function (returns 3-vectors, all joints always active)
+if mode == 'friction':
+    # All 3 joints excited simultaneously with different frequencies/phases
+    # Different freqs prevent rank deficiency in the friction regressor
+    FREQS  = [0.5, 1.0, 1.5]          # Hz — hip, thigh, calf
+    AMPS   = [0.3, 0.4, 0.5]          # rad
+    PHASES = [0.0, pi/3, 2*pi/3]      # spread phases
+    def traj_fn(t):
+        q_d   = Q_NEUTRAL.copy()       # 3-vector neutral pose
+        qd_d  = np.zeros(3)
+        qdd_d = np.zeros(3)
+        for j in range(3):
+            q_d[j]   += AMPS[j] * sin(2*pi*FREQS[j]*t + PHASES[j])
+            qd_d[j]   = AMPS[j] * 2*pi*FREQS[j] * cos(2*pi*FREQS[j]*t + PHASES[j])
+            qdd_d[j]  = -AMPS[j] * (2*pi*FREQS[j])**2 * sin(2*pi*FREQS[j]*t + PHASES[j])
+        return q_d, qd_d, qdd_d
+
+else:  # inertial
+    # load exciting trajectory from Go1_RegressorExample.cpp
+    # CSV columns: [t, q0, q1, q2, v0, v1, v2, qdd0, qdd1, qdd2, tau0, tau1, tau2]
+    traj_data = np.loadtxt(f"data/{leg}/exciting-trajectory-{run}.csv")
+    def traj_fn(t):
+        row   = np.array([np.interp(t, traj_data[:,0], traj_data[:,i]) for i in range(1,10)])
+        q_d   = row[0:3]
+        qd_d  = row[3:6]
+        qdd_d = row[6:9]
+        return q_d, qd_d, qdd_d
+
+# Output: 3-col CSVs (nv=3 — no inactive joints)
 ```
 
 > [!NOTE]
-> The inactive CSV is optional — add it to the parameter estimator only if the condition number of the active-only regressor is poor. Inactive rows are low-information but help stabilize the gravity column numerically.
+> The existing `sysid_trajectory_generator.py` was written for the 12-DOF model with inactive joint management. It needs to be significantly refactored (or rewritten) to use the 3-DOF per-leg URDF. The old `--inactive`, `Q_PRONE`, `LEG_JOINTS` logic should all be removed.
 
 ---
 
-### 11.4 Task 2 — Split `go1.urdf` into Per-Leg URDFs
+### 11.6 CSV output format (both modes, nv=3)
 
-**Location:** `Robots/unitree-go1/`
+One simulation run → four CSV files, each with **3 columns** (one per active joint):
 
-Create 4 single-leg URDFs by extracting from `go1.urdf`. Each keeps the `trunk` link as fixed root + one leg's 3 joints + 4 links. Keep the original intact and make additional 4. 
-
-| File | Active joints | nv |
-|---|---|---|
-| `go1_FR.urdf` | `1_FR_hip_joint`, `1_FR_thigh_joint`, `1_FR_calf_joint` | 3 |
-| `go1_FL.urdf` | `2_FL_hip_joint`, `2_FL_thigh_joint`, `2_FL_calf_joint` | 3 |
-| `go1_RR.urdf` | `3_RR_hip_joint`, `3_RR_thigh_joint`, `3_RR_calf_joint` | 3 |
-| `go1_RL.urdf` | `4_RL_hip_joint`, `4_RL_thigh_joint`, `4_RL_calf_joint` | 3 |
-| `go1_base.urdf` | `floating_base` (free joint, 6-DOF) — trunk only, no legs | 6 |
-
-#### How to create (manual XML surgery on `go1.urdf`)
-
-For each leg (e.g. FR):
-1. Keep the `<link name="trunk">` block (mass, inertia, visual, collision).
-2. Keep the 3 `<joint>` blocks for that leg: `1_FR_hip_joint`, `1_FR_thigh_joint`, `1_FR_calf_joint`.
-3. Keep the 4 link blocks: `1_FR_hip`, `1_FR_thigh`, `1_FR_calf`, and the foot fixed joint + link.
-4. Keep the `<joint name="floating_base" type="fixed">` connecting world to trunk (trunk stays fixed).
-5. Delete all other `<joint>`, `<link>`, `<transmission>`, `<gazebo>` blocks (FL/RR/RL).
-6. Keep the `<robot name="go1_FR">` wrapper.
-
-#### Verify each URDF
-
-```python
-import pinocchio as pin
-m = pin.buildModelFromUrdf("Robots/unitree-go1/go1_FR.urdf")
-assert m.nv == 3, f"Expected nv=3, got {m.nv}"
-print([m.names[i] for i in range(m.njoints)])
-# Expected: ['universe', '1_FR_hip_joint', '1_FR_thigh_joint', '1_FR_calf_joint']
 ```
+full_params_data/<mode>/<leg>/
+    q_downsampled.csv        (N_samples × 3)
+    q_d_downsampled.csv      (N_samples × 3)
+    q_dd_downsampled.csv     (N_samples × 3)
+    tau_downsampled.csv      (N_samples × 3)
+```
+
+The downstream C++ estimators (`FrictionParametersIdentification`, `EndEffectorParametersIdentification`) both expect `nv`-column inputs — they read `model.nv` from the URDF and expect that many columns. With `go1_FR.urdf`, `nv=3`, so 3-col CSVs are correct.
 
 ---
 
-### 11.5 Task 3 — Modify `Go1_RegressorExample_end_effector.cpp` for Per-Leg Optimization
+### 11.7 Task 1 — ✅ DONE: Per-Leg URDFs
 
-**File:** [`Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/Go1_RegressorExample_end_effector.cpp`](file:///workspaces/raptor/Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/Go1_RegressorExample_end_effector.cpp)
+**Location:** [`Robots/unitree-go1/`](file:///workspaces/raptor/Robots/unitree-go1/)
 
-**Goal:** Accept leg name from `argv[2]`, load the matching single-leg URDF. With `nv=3`, the optimizer naturally only sees 3 joints — no prone/freezing logic needed.
-
-#### Key changes
-
-```cpp
-// OLD (hardcoded full model, nv=12):
-const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf";
-
-// NEW (per-leg from argv, nv=3):
-// Usage: ./Go1_Sysid_end_effector_traj <run_id> <leg>
-// <leg> = FR | FL | RR | RL
-const std::string leg = (argc > 2) ? std::string(argv[2]) : "FR";
-const std::string urdf_filename = "../Robots/unitree-go1/go1_" + leg + ".urdf";
-
-// q0 becomes a simple 3-vector (stand pose for that leg):
-Eigen::VectorXd q0(model.nv);   // nv=3 now
-q0 << 0.0, 0.8, -1.6;           // hip, thigh, calf
-
-// DELETE the entire prone/active_leg/segment block — not needed with nv=3
-
-// Output folder uses leg name:
-const std::string outputfolder =
-    "../Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/data/" + leg + "/";
-```
-
-With `nv=3`:
-- Decision variables: `(2×3+1) × 3 = 21` (was 84)
-- `EndEffectorRegressorConditionNumber` and `RegressorInverseDynamics` read `model.nv` dynamically — **no changes needed** to those classes.
-- Build: `make Go1_Sysid_end_effector_traj -j4` (no CMake changes needed).
-- Run: `./Go1_Sysid_end_effector_traj 1 FR`
-
-#### Output files
-```
-data/FR/exciting-solution-FR-1.csv       ← 21 Fourier coeffs + q0(3) + q_d0(3) + base_freq
-data/FR/exciting-trajectory-FR-1.csv     ← t, q(3), v(3), qdd(3), tau(3) at 1000 points
-```
-
----
-
-### 11.6 Task 4 — CSV Strategy: Separate Files, Merge at Estimator
-
-Do **NOT** concatenate CSVs into one file. Keep separate, pass both to the estimator:
-
-```cpp
-// In the future parameter ID driver for inertial SysID:
-sysid->add_trajectory_file("exciting-trajectory-FR-1.csv", "acc-FR-1.csv");
-// Optionally add inactive hold data if condition number is poor:
-// sysid->add_trajectory_file("inactive-trajectory.csv", "acc-inactive.csv");
-sysid->optimize();
-```
-
-`EndEffectorParametersIdentification::add_trajectory_file()` already supports multiple segments (`Aseg`, `bseg` vectors stacked per call). Each call adds another block of regressor rows — this is the intended design.
-
-| | Merged single CSV | Separate CSVs via `add_trajectory_file` |
-|---|---|---|
-| Debuggability | Hard — rows mixed | Easy — two distinct files |
-| Flexibility | Must regenerate combined to swap segments | Swap/add segments independently |
-| RAPTOR support | Works | ✅ Native — designed for this |
-
----
-
-### 11.6b Base CSV (Phase 2 — Future Trunk Inertia Identification)
+| File | Active joints | nv | Trunk inertia note | Status |
+|---|---|---|---|---|
+| [`go1_FR.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_FR.urdf) | `1_FR_hip/thigh/calf` | 3 | Trunk fixed → its inertia value irrelevant | ✅ |
+| [`go1_FL.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_FL.urdf) | `2_FL_hip/thigh/calf` | 3 | Same | ✅ |
+| [`go1_RR.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_RR.urdf) | `3_RR_hip/thigh/calf` | 3 | Same | ✅ |
+| [`go1_RL.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_RL.urdf) | `4_RL_hip/thigh/calf` | 3 | Same | ✅ |
+| `go1_base.urdf` | floating base (nv=6) | 6 | Phase 2 only — ignore for now | ✅ |
 
 > [!NOTE]
-> This CSV is **not needed for Phase 1** (per-leg SysID). It is scaffolded here for future use. Trunk inertia can be identified after Phase 1 by using the identified leg parameters as known quantities and exciting the floating base.
-
-The base CSV format differs from leg CSVs — it contains floating-base state, not joint torques:
-
-```
-data/base/
-  base_trajectory_1.csv    ← per timestep (25 columns):
-    [t,
-     pos_x, pos_y, pos_z,          (3) base CoM position in world — from odometry/mocap
-     quat_x, quat_y, quat_z, quat_w, (4) trunk orientation — from IMU
-     vel_x, vel_y, vel_z,           (3) linear velocity — from odometry
-     omega_x, omega_y, omega_z,     (3) angular velocity — from IMU gyro
-     acc_x, acc_y, acc_z,           (3) linear acceleration — from IMU accelerometer
-     alpha_x, alpha_y, alpha_z,     (3) angular acceleration — finite diff on omega
-     wrench_fx, wrench_fy, wrench_fz,   (3) net force on trunk from legs
-     wrench_tx, wrench_ty, wrench_tz]   (3) net torque on trunk from legs
-```
-
-**Key point — `wrench_on_base` is computed, not measured:**
-
-After Phase 1, for each timestep:
-1. Run inverse dynamics on each leg (with identified leg inertial params) → reaction force at each hip joint
-2. Transform all 4 hip reaction forces to trunk CoM frame
-3. Sum → net wrench on trunk = `[wrench_fx, wrench_fy, wrench_fz, wrench_tx, wrench_ty, wrench_tz]`
-4. This wrench is what you regress the trunk inertial params against
-
-The 10 trunk unknowns: mass, CoM (x/y/z), inertia tensor (Ixx/Iyy/Izz/Ixy/Ixz/Iyz).
-
-**Source of each field:**
-
-| Field | Source on Go1 |
-|---|---|
-| `pos(3)` | Legged odometry or external mocap |
-| `quat(4)` | IMU (built-in) |
-| `vel(3)` | Legged odometry / IMU integration |
-| `omega(3)` | IMU gyroscope |
-| `acc(3)` | IMU accelerometer |
-| `alpha(3)` | Finite difference on `omega` |
-| `wrench_on_base(6)` | Computed from Phase 1 identified leg params via RNEA |
-
-**Recommended exciting motion for trunk SysID:**
-Put the robot in a position where all feet are off the ground (suspended, or a hop) OR do slow quasi-static tilts with all 4 feet on the ground (static equilibrium → contact forces computable from geometry). Both avoid the contact-force estimation problem.
-
-**`go1_base.urdf`:** Trunk as a free-floating body (`nv=6`), no legs attached. Used to build the 6-DOF regressor for trunk inertia estimation. The 10 trunk inertial parameters appear linearly in `F_base = Phi_base(a_base) * theta_trunk`.
+> With the trunk C-clamped (truly fixed), the trunk inertia in the URDF does not contribute to any dynamics equation. The fixed joint absorbs all reaction forces. No correction to trunk inertia needed regardless of what the inactive legs are doing.
 
 ---
 
-### 11.7 Implementation Order
+### 11.8 Task 2 — ✅ DONE: `Go1_RegressorExample.cpp`
+
+**File:** [`Go1_RegressorExample.cpp`](file:///workspaces/raptor/Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/Go1_RegressorExample.cpp)
+
+- Loads `go1_<leg>.urdf` from `argv[2]`
+- nv=3 optimizer, 21 decision variables
+- Outputs to `data/<leg>/exciting-{solution,trajectory}-<id>.csv`
+- CMake target: `Go1_exciting_traj`
+
+> [!WARNING]
+> **Bug to fix before building**: Lines 169–174 hardcode loop bound `12` instead of `model.nv`. Change to `model.nv`.
+
+---
+
+### 11.9 Task 3 — Refactor `sysid_trajectory_generator.py`
+
+**File:** [`sysid_trajectory_generator.py`](file:///workspaces/raptor/Examples/Unitree_Go1/python/sysid_trajectory_generator.py)
+
+Changes needed:
+1. **Remove**: all 12-DOF model logic, `Q_PRONE`, `Q_STAND`, `LEG_JOINTS`, inactive joint PD control, `--inactive`, `--joint` flags
+2. **Add**: `--mode friction|inertial`, `--leg FR|FL|RR|RL`, `--run N`
+3. **Change**: model loaded from `go1_<leg>.urdf` (nv=3), not `go1.urdf`
+4. **Friction mode**: simultaneous sinusoidal excitation on all 3 joints with different frequencies/phases
+5. **Inertial mode**: load `exciting-trajectory-<run>.csv`, replay all 3 joints via PD
+6. **Output**: 3-col CSVs to `full_params_data/<mode>/<leg>/`
+
+```bash
+# Friction SysID — all 3 joints of FR leg simultaneously:
+python3 sysid_trajectory_generator.py --mode friction --leg FR
+
+# Inertial SysID — replay optimized exciting trajectory for FR:
+python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
+```
+
+---
+
+### 11.10 Implementation Order
 
 ```
-1. Create go1_FR.urdf (copy go1.urdf, delete FL/RR/RL blocks)
-   └── Verify with Pinocchio: nv=3
+1. ✅ go1_FR/FL/RR/RL.urdf — split and verified (nv=3)
 
-2. Modify Go1_RegressorExample_end_effector.cpp
-   └── Load go1_<leg>.urdf from argv[2]
-   └── Remove prone/segment logic
-   └── q0 = [0.0, 0.8, -1.6] (3-vector)
-   └── Output to data/<leg>/
-   └── Build and run: ./Go1_Sysid_end_effector_traj 1 FR
+2. ✅ Go1_RegressorExample.cpp — loads go1_<leg>.urdf, outputs 3-DOF trajectory
+   [ ] Fix bug: loop bound 12 → model.nv (lines 169–174)
+   [ ] Build: cd build && make Go1_exciting_traj -j4
+   [ ] Run:   mkdir -p data/FR && ./Go1_exciting_traj 1 FR
+   [ ] Verify: data/FR/exciting-trajectory-1.csv has 1000 rows × 13 cols
 
-3. Refactor sysid_friction_trajectory_generator.py
-   └── Add --inactive flag
-   └── Inactive: traj_fn = constant at q_prone, skip v-mask
-   └── Run: python sysid_friction_trajectory_generator.py --inactive
+3. [ ] Refactor sysid_trajectory_generator.py
+   [ ] Remove all 12-DOF inactive joint management and --joint flag
+   [ ] Add --mode friction|inertial, --leg, --run flags
+   [ ] Friction traj_fn: parallel sinusoid all 3 joints, different freqs/phases
+   [ ] Inertial traj_fn: load CSV, replay all 3 joints via PD
+   [ ] Output 3-col CSVs to full_params_data/<mode>/<leg>/
 
-4. Run full pipeline end-to-end for FR leg
-   └── Step 2 → exciting-trajectory-FR-1.csv (3-col)
-   └── Step 3 (normal mode, --joint 0 1 2) → 12-col CSVs
-   └── Feed to EndEffectorParametersIdentification
+4. [ ] Run friction simulation for FR leg
+   [ ] python3 sysid_trajectory_generator.py --mode friction --leg FR
+   [ ] Verify: full_params_data/friction/FR/ has 4 CSVs × 3 cols
+
+5. [ ] Run inertial simulation for FR leg
+   [ ] python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
+   [ ] Verify: full_params_data/inertial/FR/ has 4 CSVs × 3 cols
+
+6. [ ] Feed CSVs to FrictionParametersIdentification and EndEffectorParametersIdentification
 ```
 
-### 11.8 Open Questions
+### 11.11 Open Questions
 
-1. **`phi.tail(10)` vs full leg**: Currently `EndEffectorParametersIdentification` optimizes only the last 10 params (last link = calf). For all 3 joints' inertia, change to `phi.tail(30)` and set `numVars = 30`. See walkthrough Section 4.
+1. **`phi.tail(10)` vs full leg**: `EndEffectorParametersIdentification` currently identifies only the last link's 10 params. For full 3-joint inertial ID, change to `phi.tail(30)` and `numVars = 30`. See Section 4.
 
-2. **Hip identifiability**: Hip joint is pure abduction (rolls leg sideways). Its inertia rows in the regressor may be poorly conditioned depending on excitation frequency choice. May need larger amplitude for hip.
+2. **Hip identifiability**: Hip is a pure abduction joint. Its regressor rows may be poorly conditioned — may need higher amplitude or frequency for the hip DOF in the exciting trajectory.
 
-3. **Trunk inertia**: The single-leg URDF includes trunk inertia and it is NOT estimated. This is correct for SysID of leg parameters. If trunk inertia is wrong in the URDF, it will bias the leg parameter estimates.
+3. **Friction frequency selection**: The three joint sinusoid frequencies (`FREQS = [0.5, 1.0, 1.5]` Hz) should be chosen to avoid harmonic relationships (e.g., avoid 0.5/1.0/2.0 where joint 3 is a harmonic of joint 1). Incommensurate frequencies give a better-conditioned friction regressor.
+

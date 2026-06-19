@@ -51,12 +51,12 @@ target_link_libraries(Go1_SysidFriction_test PUBLIC
 target_compile_options(Go1_SysidFriction_test PUBLIC
     ${PINOCCHIO_FLAGS})
 
-add_executable(Go1_Sysid_end_effector_traj
-    SystemIdentification/ExcitingTrajectories/Go1_RegressorExample_end_effector.cpp)
-target_include_directories(Go1_Sysid_end_effector_traj PUBLIC
+add_executable(Go1_exciting_traj
+    SystemIdentification/ExcitingTrajectories/Go1_RegressorExample.cpp)
+target_include_directories(Go1_exciting_traj PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include)
-target_link_libraries(Go1_Sysid_end_effector_traj PUBLIC
+target_link_libraries(Go1_exciting_traj PUBLIC
     trajlib
     IDlib
     Conslib
@@ -66,7 +66,7 @@ target_link_libraries(Go1_Sysid_end_effector_traj PUBLIC
     coinhsl
     ${Boost_LIBRARIES}
     pinocchio::pinocchio)
-target_compile_options(Go1_Sysid_end_effector_traj PUBLIC
+target_compile_options(Go1_exciting_traj PUBLIC
     ${PINOCCHIO_FLAGS})
 
 # ==============================================================================
