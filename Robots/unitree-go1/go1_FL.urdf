@@ -199,7 +199,7 @@
     <child link="2_FL_hip" />
     <axis xyz="1 0 0" />
     <dynamics damping="0.0" friction="0.0" />
-    <effort="23.7" lower="-0.863" upper="0.863" velocity="30.1" />
+    <limit effort="23.7" lower="-0.863" upper="0.863" velocity="30.1" />
   </joint>
   
   <link name="2_FL_hip">

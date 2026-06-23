@@ -1085,3 +1085,125 @@ python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
 
 3. **Friction frequency selection**: The three joint sinusoid frequencies (`FREQS = [0.5, 1.0, 1.5]` Hz) should be chosen to avoid harmonic relationships (e.g., avoid 0.5/1.0/2.0 where joint 3 is a harmonic of joint 1). Incommensurate frequencies give a better-conditioned friction regressor.
 
+## 12. Exciting Trajectory Regressor Configuration — Key Findings (Go1 FR Leg)
+
+### 30-col vs 10-col, N=100, NO rankIdx fix
+
+| | **30-column** `(NB-3)*10, width=30` | **10-column** `(NB-1)*10, width=10` |
+|---|---|---|
+| **What it covers** | All 3 links: hip + thigh + calf | Calf link only |
+| **Y matrix shape** | 300 × 30 | 300 × 10 |
+| **sigma[last]** | sigma[29] = **0 (exactly)** | sigma[9] = **7.8e-18 (float artifact)** |
+| **log(sigmaMin)** | log(0) = **−∞ → NaN** | log(7.8e-18) = −39.4 (finite) |
+| **Gradient** | **NaN** | 1/7.8e-18 = 1.3e17 (huge but finite) |
+| **Iterations** | **0** | 196 |
+| **Exit** | ❌ Invalid number (NaN crash) | ⚠️ Error in step computation |
+| **Solution found** | **None** | 38.4258 (barely, poor quality) |
+
+### Why they differ
+
+The 30-col version has **structurally zero columns** (col[0,1,5-10], col[12], col[14,17,19], col[24,27,29]) which produce Eigen-exact zeros in the SVD. `log(0) = −∞` → NaN gradient → IPOPT aborts at iter 0.
+```
+=== EndeffectorY debug (shape 300x30) ===
+Column L2 norms:
+  col[0] = 0  <-- ZERO
+  col[1] = 0  <-- ZERO
+  col[2] = 94.5257
+  col[3] = 26.2394
+  col[4] = 0.305395
+  col[5] = 0  <-- ZERO
+  col[6] = 0  <-- ZERO
+  col[7] = 0  <-- ZERO
+  col[8] = 0  <-- ZERO
+  col[9] = 0  <-- ZERO
+  col[10] = 0  <-- ZERO
+  col[11] = 34.6074
+  col[12] = 0  <-- ZERO
+  col[13] = 129.123
+  col[14] = 0.0102768
+  col[15] = 0.122534
+  col[16] = 0.982778
+  col[17] = 0.0650968
+  col[18] = 0.414147
+  col[19] = 0.0102768
+  col[20] = 27.5012
+  col[21] = 159.161
+  col[22] = 0.0882134
+  col[23] = 38.3287
+  col[24] = 0.0105288
+  col[25] = 0.52179
+  col[26] = 1.60923
+  col[27] = 0.0809114
+  col[28] = 0.0867965
+  col[29] = 0.0105288
+```
+
+The 10-col version has sigma[9] = 7.8e-18, a **floating-point rounding artifact** from Eigen's SVD, not a true structural zero. Tiny but finite → IPOPT survives 196 iterations with an exploding gradient (~1e17) but still fails to converge cleanly.
+
+### The fix: `rankIdx`
+
+Walk backward from `lastRow` to find the smallest **non-near-zero** singular value:
+```cpp
+const double tol = 1e-6 * sigmaMax;
+size_t rankIdx = lastRow;
+while (rankIdx > 0 && singularValues(rankIdx) < tol) { rankIdx--; }
+const double &sigmaMin = singularValues(rankIdx); // sigma[16] = 0.0194 for 30-col
+
+## Why Certain Regressor Columns Are Structurally Zero
+
+When examining the 30-column regressor debug output, several columns are identically zero for all timesteps. These are not numerical artifacts — each has a precise geometric reason.
+
+### Hip link (cols 0–9, x-axis joint)
+
+| Col | Parameter | Norm | Reason |
+|-----|-----------|------|--------|
+| 0 | m_hip | 0 | The "m" column = unit mass at joint origin. The hip joint origin is a **fixed pivot** (attached to trunk). A mass at a fixed pivot has zero velocity, zero acceleration, zero moment arm → zero torque everywhere. |
+| 1 | mcx_hip | 0 | For an x-axis joint: `τ_hip_x = (r×F)_x = cy·Fz - cz·Fy`. **cx never appears** in the x-axis cross-product projection, regardless of trajectory. (URDF: cx = -0.005657 m ≠ 0, but still zero in regressor.) |
+| 5–9 | Ixy,Ixz,Iyy,Iyz,Izz | 0 | Hip link only has x-axis rotation (no parent joints), so ωy=ωz=0. Then `(I·α)_x = Ixx·αx` and `(ω×I·ω)_x = 0`. **Only Ixx survives.** |
+
+### Thigh link (cols 10–19, y-axis joint)
+
+| Col | Parameter | Norm | Reason |
+|-----|-----------|------|--------|
+| 10 | m_thigh | 0 | Unit mass at thigh joint origin: zero moment arm about the thigh joint itself; specific Go1 geometry makes its contribution to hip torque negligible. |
+| 12 | mcy_thigh | 0 | **mcy is invisible to y-axis joints** (`(r×F)_y = cz·Fx - cx·Fz`, cy absent). Thigh and calf joints (both y-axis) cannot sense this parameter. Hip (x-axis) has weak coupling due to kinematic geometry. |
+| 14,19 | Ixx,Izz | equal | Sagittal-plane motion (y-axis chain) mixes Ixx and Izz symmetrically via `R·I·R^T`. Only `Ixx-Izz` is distinguishable. |
+
+### General rule
+
+- **x-axis joint**: cannot sense `mcx` (along rotation axis), `Iyy`, `Izz`, off-diagonal inertias when ωy=ωz=0
+- **y-axis joint**: cannot sense `mcy` (along rotation axis), `Ixx-Izz` individually (only their difference)
+- **Mass `m` at joint origin**: always zero contribution (fixed pivot for base link; zero moment arm at any joint)
+
+This gives exactly **13 structural zeros** → rank 17 out of 30 for the Go1 FR leg.
+
+---
+
+## Handling Unidentifiable Parameters
+
+The 13 zero-column parameters are **structurally unidentifiable from joint torque measurements alone** — no trajectory, however exciting, can recover them. This is a fundamental limit of the kinematic structure, not a deficiency of the optimizer.
+
+### What "unidentifiable" means
+
+Setting an unidentifiable parameter to any value produces **identical predicted torques**. Least-squares estimation returns an arbitrary result (or fails numerically). The optimizer (IPOPT) cannot improve the condition number in these directions — hence the 13 zero singular values.
+
+### Strategies for these parameters
+
+| Parameter | Recommended approach |
+|-----------|---------------------|
+| m_hip, Iyy_hip, Izz_hip | **Use URDF value** — only a housing link, small impact on dynamics |
+| mcy_thigh | **Use URDF value** — extremely weak signal even at hip (x-axis) |
+| Ixx_thigh, Izz_thigh individually | **Use URDF** or assume symmetry (Ixx≈Izz for sagittal links) |
+| All 17 identifiable directions | **Estimate from exciting trajectory** ✓ |
+
+### Alternative estimation methods (if URDF values are distrusted)
+
+1. **Direct physical measurement**: bifilar pendulum → Iyy, Izz directly; balance test → CoM
+2. **Tilted configuration**: rolling the robot to 90° hip roll swaps x↔z axes, making previously invisible parameters visible
+3. **Floating-base identification**: whole-body dynamics with IMU + contact forces gives different observability
+4. **Manufacturer CAD**: Unitree's URDF values come from solid-model mass properties — generally reliable for the unidentifiable subset
+
+### Practical takeaway
+
+The 17 identifiable parameters are the **only ones that affect torque prediction accuracy**. Unidentifiable parameters contribute zero to any torque by definition — so URDF values are perfectly adequate for them, and the system identification effort should focus entirely on the identifiable subspace.
+

@@ -27,10 +27,12 @@ void EndEffectorRegressorConditionNumber::compute(const VecX &z,
   ridPtr_->compute(z, compute_derivatives, compute_hessian);
 
   // get the regressor corresponding to the end effector
-  const int startCol = (ridPtr_->NB - 1) * 10; // changed from 1 to 3
+  const int startCol = (ridPtr_->NB - 3) *
+                       10; // changed from 1 to 3 Note: Can use last link sysID
+                           // but cannot distinguish between Ixx and Izz.
   const MatX &EndeffectorY = ridPtr_->Y.middleCols(
       startCol,
-      10); // changed from 10 to 30 for full leg parameter identification
+      30); // changed from 10 to 30 for full leg parameter identification
 
   Eigen::JacobiSVD<MatX> svd(EndeffectorY,
                              Eigen::ComputeThinU | Eigen::ComputeThinV);
@@ -45,7 +47,7 @@ void EndEffectorRegressorConditionNumber::compute(const VecX &z,
     std::cout << "\n=== EndeffectorY debug (shape " << EndeffectorY.rows()
               << "x" << EndeffectorY.cols() << ") ===\n";
 
-    std::cout << "EndeffectorY: \n" << EndeffectorY << "\n\n";
+    // std::cout << "EndeffectorY: \n" << EndeffectorY << "\n\n";
 
     std::cout << "Column L2 norms:\n";
     for (int c = 0; c < EndeffectorY.cols(); c++) {
@@ -66,23 +68,29 @@ void EndEffectorRegressorConditionNumber::compute(const VecX &z,
 
   const size_t lastRow = singularValues.size() - 1;
   const double &sigmaMax = singularValues(0);
-  const double &sigmaMin = singularValues(lastRow);
+
+  const double tol = 1e-6 * sigmaMax;
+  size_t rankIdx = lastRow;
+  while (rankIdx > 0 && singularValues(rankIdx) < tol) {
+    rankIdx--;
+  }
+  const double &sigmaMin = singularValues(rankIdx);
 
   // log of the condition number in 2-norm
   // (ratio between the largest and the smallest singular values)
-  f = std::log(sigmaMax) - std::log(sigmaMin);
+  f = std::log(sigmaMax) - std::log(sigmaMin); // this is the cost
 
   if (compute_derivatives) {
     // refer to (17) in https://j-towns.github.io/papers/svd-derivative.pdf
     // for analytical gradient of singular values
     for (int i = 0; i < trajPtr_->varLength; i++) {
-      const int startCol = (ridPtr_->NB - 1) * 10;
-      const MatX &gradEndeffectorY = ridPtr_->pY_pz(i).middleCols(startCol, 10);
+      const int startCol = (ridPtr_->NB - 3) * 10;
+      const MatX &gradEndeffectorY = ridPtr_->pY_pz(i).middleCols(startCol, 30);
 
       const double gradSigmaMax =
           U.col(0).transpose() * gradEndeffectorY * V.col(0);
       const double gradSigmaMin =
-          U.col(lastRow).transpose() * gradEndeffectorY * V.col(lastRow);
+          U.col(rankIdx).transpose() * gradEndeffectorY * V.col(rankIdx);
 
       grad_f(i) = gradSigmaMax / sigmaMax - gradSigmaMin / sigmaMin;
     }
