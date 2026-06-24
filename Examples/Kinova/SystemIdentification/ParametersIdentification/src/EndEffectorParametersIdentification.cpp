@@ -167,7 +167,7 @@ bool EndEffectorParametersIdentification::get_nlp_info(
     Index &n, Index &m, Index &nnz_jac_g, Index &nnz_h_lag,
     IndexStyleEnum &index_style) {
   // number of decision variables
-  n = 10; // End-effector parameters
+  n = 10; // End-effector parameters change to 30
   numVars = n;
 
   // number of constraints
@@ -215,7 +215,7 @@ bool EndEffectorParametersIdentification::eval_grad_f(Index n, const Number *x,
 
   VecX z = Utils::initializeEigenVectorFromArray(x, n);
   Mat10 dtheta;
-  phi.tail(10) = d_z_to_theta(z, dtheta);
+  phi.tail(10) = d_z_to_theta(z, dtheta); // change to 30
 
   // Compute the gradient
   VecX grad_f_vec = VecX::Zero(n);
@@ -242,7 +242,7 @@ bool EndEffectorParametersIdentification::eval_hess_f(Index n, const Number *x,
   VecX z = Utils::initializeEigenVectorFromArray(x, n);
   Mat10 dtheta;
   Eigen::Array<Mat10, 1, 10> ddtheta;
-  phi.tail(10) = dd_z_to_theta(z, dtheta, ddtheta);
+  phi.tail(10) = dd_z_to_theta(z, dtheta, ddtheta); // chsange to 30
 
   // Compute the Hessian
   hess_f = MatX::Zero(n, n);
@@ -268,7 +268,7 @@ void EndEffectorParametersIdentification::finalize_solution(
   Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value,
                                ip_data, ip_cq);
 
-  theta_solution = z_to_theta(solution);
+  theta_solution = z_to_theta(solution); // only works for 10 vectors need to redefine for 30?
 }
 
 Eigen::Vector<double, 10>

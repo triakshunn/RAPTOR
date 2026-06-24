@@ -423,7 +423,33 @@ def main():
     vd_des_all  = np.array([traj_fn(t)[1] for t in ts_out])   # (N, 3)
     add_des_all = np.array([traj_fn(t)[2] for t in ts_out])   # (N, 3)
 
-  
+    def make_grid(title, actual, desired, ts_out,leg, ylabel):
+        """Helper: 4x3 grid plot for one signal type across all 12 joints."""
+        fig, axes = plt.subplots(1, 3, figsize=(14, 10), sharex=True)
+        fig.suptitle(title, fontsize=13)
+        for j in range(3):
+            jidx = j
+            ax   = axes[j]
+            ax.plot(ts_out, actual[:, jidx],
+                    color='red',
+                    lw=2.0 ,
+                    label='actual')
+            ax.plot(ts_out, desired[:, jidx],
+                    color='orange', lw=1.0, ls='--', label='desired')
+            ax.set_title(
+                f"{leg} {joint_names[j]}  (j{jidx})"
+                + (""),
+                fontsize=8,
+                fontweight='bold',
+                color='red')
+            ax.grid(True, alpha=0.4)
+            if j == 0:
+                ax.set_ylabel(ylabel, fontsize=8)
+            ax.set_xlabel("Time (s)", fontsize=8)
+            if j == 0:
+                ax.legend(fontsize=7)
+        plt.tight_layout()
+        return fig
 
     make_grid("Position — Actual vs Desired (all 12 joints)",
               qs_out, qd_des_all,ts_out, leg, "rad")
