@@ -4,7 +4,7 @@ using namespace RAPTOR;
 
 const std::string folder_name =
     "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-    "end_effector_params_data/";
+    "full_params_data/";
 
 int main(int argc, char *argv[]) {
   // check if the file number is provided
@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Load the robot model
-  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf";
+  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf"; // urdf based on args
 
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 
   // load the data
   std::string trajectory_filename =
-      folder_name + "2024_11_17_no_gripper_id_" + std::string(argv[1]) + ".txt"; /// load the trajectory data here 
+      folder_name + "inertial" + std::string(argv[1]) + ".csv"; /// load the trajectory data here 
   // std::string trajectory_filename =
   // "../Examples/Kinova/SystemIdentification/ExcitingTrajectories/data/T10_d5_slower/exciting-trajectory-"
   // + std::string(argv[1]) + ".csv"; std::string trajectory_filename =
@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
 
   // load friction parameters
   const std::string friction_parameters_filename =
-      folder_name + "friction_params.csv";  // what is the structure of this file? 
+      folder_name + "friction_params.csv";  // what is the structure of this file? (Need to give true params)
   Eigen::VectorXd friction_parameters =
       Utils::initializeEigenMatrixFromFile(friction_parameters_filename).col(0);
   if (friction_parameters.size() != 3 * model.nv &&

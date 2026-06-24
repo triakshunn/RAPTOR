@@ -1,0 +1,9 @@
+{
+  "features": {
+    "ghcr.io/wxw-matt/devcontainer-features/command_runner:0": {
+      "version": "0.5.0",
+      "resolved": "ghcr.io/wxw-matt/devcontainer-features/command_runner@sha256:ee54b2f7a82b373be5ca093726187a4c1bfa604c0ac3e07e787e68f31fca2736",
+      "integrity": "sha256:ee54b2f7a82b373be5ca093726187a4c1bfa604c0ac3e07e787e68f31fca2736"
+    }
+  }
+}

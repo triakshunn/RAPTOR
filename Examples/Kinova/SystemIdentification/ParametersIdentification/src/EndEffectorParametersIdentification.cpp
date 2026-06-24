@@ -22,7 +22,7 @@ bool EndEffectorParametersIdentification::set_parameters(
   modelPtr_ = std::make_shared<Model>(model_input);
   dataPtr_ = std::make_shared<Data>(*modelPtr_);
 
-  phi = VecX::Zero(10 * modelPtr_->nv);
+  phi = VecX::Zero(10 * modelPtr_->nv); // changed to 30?
   for (Index i = 0; i < modelPtr_->nv; i++) {
     const int pinocchio_joint_id = i + 1;
     phi.segment<10>(10 * i) =

@@ -1,12 +1,5 @@
 # RAPTOR C++ System Identification Pipeline — Full Walkthrough
 
-> [!IMPORTANT]
-> **User Preferences (always respect these):**
-> - The user writes or copy-pastes ALL code themselves. Do **NOT** automatically write, edit, or run code files.
-> - Act as a thinking partner and explainer. Generate code in the chatbox for copy-pasting only.
-> - Building markdown artifacts is fine. Modifying `.cpp`, `.h`, `.py`, `.m`, or any source files directly is **not**.
-> - Do not run terminal commands that execute or modify code without explicit user permission.
-
 ## 0. Full Pipeline Execution Flow (How to Actually Run System ID)
 
 > [!NOTE]
@@ -455,23 +448,8 @@ The identified friction for the 11 frozen joints will be near-zero (they didn't 
 
 ---
 
-## 7. Inertial SysID Plan
 
-Approach 1: Use Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/KinovaRegressorExamplePayload.cpp as a template to build end effector trajectory generator for Go1 without 
-obstacles. You should be able to use the existing pipeline to get the calf inertial parameters then.
-Update: Ran the exciting trajectory generation, with all 12 joints excited, [TODO] need to excite only one joint. 
-
-Approach 2: Use the Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/KinovaRegressorExample.cpp as a template to build entire leg/entire body trajectory generator for Go1 and figure out 
-a way to modify the end effector parameter estimation pipeline to work this out. 
-Update: Ran the exciting trajectory generation, with all 12 joints excited. [TODO] excite only one leg completely. and pull the last 10 inertial parameters to include all 3 joints of a leg, optimize and get results. Keep other joints like free (like no torque so I can bing them or something) . Just treat each leg as a seperate robot arm and do sysID. Can just force all inactive legs to be forced to be at nominal positions so it can lay back in prone position. Otherwise will need to find a way in model to get only required joint terms in simulation. 
-1) Prone positions [TODO: Find nominal positions for prone position for Go1 to keep other legs still]
-2) Generate and viz the trajectory for sanity.
-Optimization: 
-1) Optimize for all inertial params simultaneously. Lets see. should just need to change params to [:10] to [:-all inertial params in the body]
-
-
-
-## 8. The Optimizer Base Class (IPOPT Interface)
+## 7. The Optimizer Base Class (IPOPT Interface)
 
 All sys ID classes inherit from [Optimizer](file:///Users/akshunn/ROAHM%20Lab/RAPTOR/Optimization/include/Optimizer.h), which inherits from `Ipopt::TNLP`. This is the C++ interface to IPOPT.
 
@@ -534,7 +512,7 @@ The key methods each subclass **must** implement:
 
 ---
 
-## 9. Where's the "Missing" Code?
+## 8. Where's the "Missing" Code?
 
 You noticed that the C++ pipeline doesn't have a single monolithic "run everything" file like `SysIDMain.m`. Here's where each piece lives:
 
@@ -552,7 +530,7 @@ You noticed that the C++ pipeline doesn't have a single monolithic "run everythi
 ---
 
 
-### 9.1 Phase 2: Build & Run C++ Solver
+### 8.1 Phase 2: Build & Run C++ Solver
 
 **Inside the container — build:**
 ```bash
@@ -603,11 +581,11 @@ For `active_joint = 1`, expect:
 
 ---
 
-### 9.4 Phase 3 — Validation via IDC Tracking Comparison (PENDING)
+### 8.4 Phase 3 — Validation via IDC Tracking Comparison
 
 **Goal**: Show that identified friction parameters improve control performance.
 
-#### 9.4.1 Why IDC for Validation (Not PD)
+#### 8.4.1 Why IDC for Validation (Not PD)
 
 Simple PD: `τ = Kp·e + Kd·ė` → tracking quality depends on **gains**, not model quality. A lucky gain choice can mask bad parameters.
 
@@ -622,7 +600,7 @@ If `M̂, Ĉ, ĝ, F̂c, F̂v` are wrong → residual nonlinear dynamics → track
 
 **This directly exposes model quality.** The controller performance becomes a proxy for parameter accuracy.
 
-#### 9.4.2 Two Scenarios to Compare
+#### 8.4.2 Two Scenarios to Compare
 
 Simulate tracking a **NEW** sinusoidal trajectory (different frequencies from the one used for identification!) under two parameter sets:
 
@@ -637,7 +615,7 @@ Scenario B: IDC with identified friction parameters from Phase 2 (Fc_estimated, 
 The "ground truth simulator" always uses the true parameters — the true model generates the actual robot states. The IDC controller uses whichever parameter set is being tested.
 
 
-#### 9.4.3 IDC Implementation
+#### 8.4.3 IDC Implementation
 
 ```python
 def idc_controller(q, v, qd, qd_d, qd_dd, model_hat, data_hat, Fc_hat, Fv_hat):
@@ -655,7 +633,7 @@ def idc_controller(q, v, qd, qd_d, qd_dd, model_hat, data_hat, Fc_hat, Fv_hat):
     return tau_ff + tau_friction_comp
 ```
 
-#### 9.4.4 Validation Metrics
+#### 8.4.4 Validation Metrics
 
 ```python
 # For each scenario, compute:
@@ -672,27 +650,12 @@ RMSE(B) ≈ RMSE(A)  (identified params ≈ true params → good tracking)
 
 If `RMSE(B) >> RMSE(A)`, the identification failed — go back and check data quality.
 
-#### 9.4.5 Phase 4 — Sequential Per-Joint Identification
 
-Run the entire pipeline 3 times for one leg:
-
-```
-Run 1: active_joint = 2 (FR_calf)   → identify Fc_calf, Fv_calf, Ia_calf
-Run 2: active_joint = 1 (FR_thigh)  → identify Fc_thigh, Fv_thigh, Ia_thigh
-Run 3: active_joint = 0 (FR_hip)    → identify Fc_hip, Fv_hip, Ia_hip
-```
-
-Each run generates its own CSVs and solves independently. Combine the 3 results at the end.
-
-> [!NOTE]
-> **Order doesn't matter for friction ID** (unlike inertial ID where distal-first matters). Each joint's friction is entirely local: `Fc_i · sign(q̇_i)` only depends on joint i's own velocity. No cross-joint coupling.
-
-
-#### 9.4.5 Phase 3 — Validation via IDC Tracking Comparison
+#### 8.4.5 Phase 3 — Validation via IDC Tracking Comparison
 
 **Goal**: Show that identified friction parameters improve control performance.
 
-#### 9.4.5.1 Why IDC for Validation (Not PD)
+#### 8.4.5.1 Why IDC for Validation (Not PD)
 
 Simple PD: `τ = Kp·e + Kd·ė` → tracking quality depends on **gains**, not model quality. A lucky gain choice can mask bad parameters.
 
@@ -707,7 +670,7 @@ If `M̂, Ĉ, ĝ, F̂c, F̂v` are wrong → residual nonlinear dynamics → track
 
 **This directly exposes model quality.** The controller performance becomes a proxy for parameter accuracy.
 
-#### 10.4.2 Two Scenarios to Compare
+#### 8.4.2 Two Scenarios to Compare
 
 Simulate tracking a **NEW** sinusoidal trajectory (different frequencies from the one used for identification!) under two parameter sets:
 
@@ -721,7 +684,7 @@ Scenario B: IDC with identified friction parameters from Phase 2 (Fc_estimated, 
 
 The "ground truth simulator" always uses the true parameters — the true model generates the actual robot states. The IDC controller uses whichever parameter set is being tested.
 
-#### 9.4.5.3 IDC Implementation
+#### 8.4.5.3 IDC Implementation
 
 ```python
 def idc_controller(q, v, qd, qd_d, qd_dd, model_hat, data_hat, Fc_hat, Fv_hat):
@@ -739,7 +702,7 @@ def idc_controller(q, v, qd, qd_d, qd_dd, model_hat, data_hat, Fc_hat, Fv_hat):
     return tau_ff + tau_friction_comp
 ```
 
-#### 9.4.5.4 Validation Metrics
+#### 8.4.5.4 Validation Metrics
 
 ```python
 # For each scenario, compute:
@@ -761,30 +724,11 @@ RMSE(B) ≈ RMSE(A)  (identified params ≈ true params → good tracking)
 
 If `RMSE(B) >> RMSE(A)`, the identification failed — go back and check data quality.
 
-### 10.5 Phase 4 — Sequential Per-Joint Identification
-> [!NOTE] 
-> **This approach is deprecated as simulation results show there is no difference between sequential and parallel data collection approach**
-
-Run the entire pipeline 3 times for one leg: (Deprecated approach, results are very similar )
-
-```
-Run 1: active_joint = 2 (FR_calf)   → identify Fc_calf, Fv_calf, Ia_calf
-Run 2: active_joint = 1 (FR_thigh)  → identify Fc_thigh, Fv_thigh, Ia_thigh
-Run 3: active_joint = 0 (FR_hip)    → identify Fc_hip, Fv_hip, Ia_hip
-```
-
-Each run generates its own CSVs and solves independently. Combine the 3 results at the end.
-
-> [!NOTE]
-> **Order doesn't matter for friction ID** (unlike inertial ID where distal-first matters). Each joint's friction is entirely local: `Fc_i · sign(q̇_i)` only depends on joint i's own velocity. No cross-joint coupling.
-
-
-
-## 10. C++ Best Practices:  Porting Kinova Example Modules to Unitree Go1
+## 9. C++ Best Practices:  Porting Kinova Example Modules to Unitree Go1
 
 When porting a copied module (e.g., `CollisionAvoidanceTrajectory` or `CollisionAvoidanceInverseKinematics`) from the Kinova folder to Go1, follow this checklist to prevent compilation/namespace conflicts and ensure correct indexing.
 
-### 10.1 Namespace Isolation
+### 9.1 Namespace Isolation
 By default, the copied files will declare classes inside the `RAPTOR::Kinova` or `RAPTOR::Kinova::Armour` namespace. To prevent duplicate definition (ODR) errors:
 1. Rename all instances of `namespace Kinova` and `using namespace Kinova;` to `namespace Go1` and `using namespace Go1;`.
 2. Run these commands in the terminal targeting the subfolder:
@@ -794,7 +738,7 @@ By default, the copied files will declare classes inside the `RAPTOR::Kinova` or
    find /workspaces/raptor/Examples/Unitree_Go1/<SubfolderName>/ -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i 's/Kinova::Armour/Go1::Armour/g' {} +
    ```
 
-### 10.2 Constants Namespace & File Updates
+### 9.2 Constants Namespace & File Updates
 Kinova constants are declared in `KinovaConstants.h`. If you port a folder:
 1. Make sure `Go1Constants.h` is created with `namespace RAPTOR { namespace Go1 { ... } }`.
 2. Replace includes in your ported files:
@@ -803,7 +747,7 @@ Kinova constants are declared in `KinovaConstants.h`. If you port a folder:
    +#include "Go1Constants.h"
    ```
 
-### 10.3 CMake Targets Setup
+### 9.3 CMake Targets Setup
 Declare separate library, executable, and nanobind modules in `/workspaces/raptor/Examples/Unitree_Go1/CMakeLists.txt` using the `Go1` prefix instead of `Kinova`.
 
 For example, to compile Go1 Armour:
@@ -823,7 +767,7 @@ target_link_libraries(Go1Armour_example PUBLIC Go1Armourlib ...)
 nanobind_add_module(go1_armour_nanobind NB_SHARED LTO ...)
 ```
 
-### 10.4 URDF & YAML Configurations
+### 9.4 URDF & YAML Configurations
 In the ported C++ example driver files (e.g. `ArmourExample.cpp`), update the loaded assets to point to the Go1 URDF model and YAML configurations:
 ```cpp
 const std::string robot_model_file = "../Robots/unitree-go1/go1.urdf";
@@ -832,12 +776,12 @@ const std::string robot_info_file = "../Examples/Unitree_Go1/Armour/Go1Info.yaml
 
 ---
 
-## 11. Per-Leg SysID — Final Architecture (Fixed Base)
+## 10. Per-Leg SysID — Final Architecture (Fixed Base)
 
 > [!IMPORTANT]
 > **Physical setup decision**: The robot trunk is **C-clamped to a rigid table**. This makes the base truly fixed, completely decoupling all leg branches from each other. Inactive legs can be in any configuration (hanging, roped, free) and require **no motor torques and no controller**. The simulation uses only the active leg's 3-DOF per-leg URDF for both friction and inertial SysID.
 
-### 11.1 Why fixed base decouples inactive legs
+### 10.1 Why fixed base decouples inactive legs
 
 For an open kinematic chain with a **truly fixed base**, the Newton-Euler equations for the active leg (e.g., FR) are:
 
@@ -852,7 +796,7 @@ FL, RR, RL joint variables appear **nowhere** in this expression. They are on se
 
 ---
 
-### 11.2 Physical Setup
+### 10.2 Physical Setup
 
 ```
          ┌────────────────────────────────┐
@@ -872,7 +816,7 @@ FL, RR, RL joint variables appear **nowhere** in this expression. They are on se
 
 ---
 
-### 11.3 Architecture
+### 10.3 Architecture
 
 Both friction and inertial SysID follow the same pipeline. The only difference is the trajectory source for the active leg.
 
@@ -888,11 +832,11 @@ Both friction and inertial SysID follow the same pipeline. The only difference i
 ┌────────────────────────────────────▼────────────────────────────┐
 │  sysid_trajectory_generator.py  (Python, 3-DOF simulation)      │
 │                                                                  │
-│  --mode friction  --leg FR  --joint 0                            │
+│  --mode friction  --leg FR  --joint 0  (TODO: Not required, since we doing simultaneous  datagen)                                                           │
 │    Model:    go1_FR.urdf (nv=3)   ← fixed base                  │
 │    Traj:     multi-freq sinusoid for joint 0 (or 1, or 2)        │
 │    Inactive: not in model at all                                  │
-│    Output:   full_params_data/friction/FR/joint_0/               │
+│    Output:   full_params_data/friction/FR/                        │
 │                                                                  │
 │  --mode inertial  --leg FR  --run 1                              │
 │    Model:    go1_FR.urdf (nv=3)   ← fixed base                  │
@@ -993,36 +937,6 @@ full_params_data/<mode>/<leg>/
 
 The downstream C++ estimators (`FrictionParametersIdentification`, `EndEffectorParametersIdentification`) both expect `nv`-column inputs — they read `model.nv` from the URDF and expect that many columns. With `go1_FR.urdf`, `nv=3`, so 3-col CSVs are correct.
 
----
-
-### 11.7 Task 1 — ✅ DONE: Per-Leg URDFs
-
-**Location:** [`Robots/unitree-go1/`](file:///workspaces/raptor/Robots/unitree-go1/)
-
-| File | Active joints | nv | Trunk inertia note | Status |
-|---|---|---|---|---|
-| [`go1_FR.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_FR.urdf) | `1_FR_hip/thigh/calf` | 3 | Trunk fixed → its inertia value irrelevant | ✅ |
-| [`go1_FL.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_FL.urdf) | `2_FL_hip/thigh/calf` | 3 | Same | ✅ |
-| [`go1_RR.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_RR.urdf) | `3_RR_hip/thigh/calf` | 3 | Same | ✅ |
-| [`go1_RL.urdf`](file:///workspaces/raptor/Robots/unitree-go1/go1_RL.urdf) | `4_RL_hip/thigh/calf` | 3 | Same | ✅ |
-| `go1_base.urdf` | floating base (nv=6) | 6 | Phase 2 only — ignore for now | ✅ |
-
-> [!NOTE]
-> With the trunk C-clamped (truly fixed), the trunk inertia in the URDF does not contribute to any dynamics equation. The fixed joint absorbs all reaction forces. No correction to trunk inertia needed regardless of what the inactive legs are doing.
-
----
-
-### 11.8 Task 2 — ✅ DONE: `Go1_RegressorExample.cpp`
-
-**File:** [`Go1_RegressorExample.cpp`](file:///workspaces/raptor/Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/Go1_RegressorExample.cpp)
-
-- Loads `go1_<leg>.urdf` from `argv[2]`
-- nv=3 optimizer, 21 decision variables
-- Outputs to `data/<leg>/exciting-{solution,trajectory}-<id>.csv`
-- CMake target: `Go1_exciting_traj`
-
-> [!WARNING]
-> **Bug to fix before building**: Lines 169–174 hardcode loop bound `12` instead of `model.nv`. Change to `model.nv`.
 
 ---
 
@@ -1079,7 +993,9 @@ python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
 
 ### 11.11 Open Questions
 
-1. **`phi.tail(10)` vs full leg**: `EndEffectorParametersIdentification` currently identifies only the last link's 10 params. For full 3-joint inertial ID, change to `phi.tail(30)` and `numVars = 30`. See Section 4.
+1. **`phi.tail(10)` vs full leg**: `EndEffectorParametersIdentification` currently identifies only the last link's 10 params. For full 3-joint inertial ID, change to `phi.tail(30)` and `numVars = 30`. See Section 4. [Future Note: From my
+understanding, this will not lead to optimization working, will need to remove the columns to minimize conditioning num
+of regressor]
 
 2. **Hip identifiability**: Hip is a pure abduction joint. Its regressor rows may be poorly conditioned — may need higher amplitude or frequency for the hip DOF in the exciting trajectory.
 

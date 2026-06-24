@@ -18,165 +18,158 @@ Go1 torque limits doc: https://pmc.ncbi.nlm.nih.gov/articles/PMC11207842/pdf/sen
 Go1 Kp:Kd torque values taken from here: https://arxiv.org/pdf/2304.09834
 '''
 
+# ===== Constants =====
+# Per-leg neutral pose [hip, thigh, calf]
+LEG_NEUTRAL = np.array([0.0, 1.9, -1.85])
+
+# Friction mode: simultaneous excitation of all 3 joints
+# Frequencies chosen to be incommensurate (avoid harmonic relationships)
+FRICTION_AMPS   = np.array([0.7, 1.5, 0.8])       # rad — hip, thigh, calf
+FRICTION_FREQS  = np.array([0.5, 1.0, 1.5])       # Hz
+FRICTION_PHASES = np.array([0.0, np.pi/3, 2*np.pi/3])  # rad — spread phases
+
+DT_SIM = 1e-2   # simulation timestep (10 ms)
+T_SIM  = 10.0    # simulation duration (s)
+
+KP_FRICTION, KD_FRICTION   = 60.0, 3.0    # PD gains, friction mode
+KP_INERTIAL, KD_INERTIAL   = 60.0, 3.0  # PD gains, inertial mode 
+
+TAU_LIMITS = np.array([23.7, 23.7, 23.7])  # N·m — hip, thigh, calf (35.5 suggested by AI tho)
+V_LIMIT    = 30.0                            # rad/s
+
+# Ground-truth friction (simulation only — not used for hardware)
+FC_TRUE = np.array([0.5, 0.8, 0.6])
+FV_TRUE = np.array([0.3, 0.5, 0.4])
+IA_TRUE = np.array([0.02, 0.03, 0.02])
+
 sys.path.append("/workspaces/RAPTOR/build/lib")
 
-def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
+
+def make_friction_traj_fn():
     """
-    Checks if the desired trajectory violates joint position limits at any simulated time step.
+    All 3 joints excited simultaneously with different frequencies and phases.
+    Returns a trajectory function traj_fn(t) → (q_d, qd_d, qdd_d).
+    """
+    def traj_fn(t):
+        q_d   = LEG_NEUTRAL.copy()
+        qd_d  = np.zeros(3)
+        qdd_d = np.zeros(3)
+
+        for j in range(3):
+            w = 2 * np.pi * FRICTION_FREQS[j]
+            phi = FRICTION_PHASES[j]
+
+            q_d[j]   += FRICTION_AMPS[j] * np.sin(w * t + phi)
+            qd_d[j]   += FRICTION_AMPS[j] * w * np.cos(w * t + phi)
+            qdd_d[j]  -= FRICTION_AMPS[j] * w**2 * np.sin(w * t + phi)
+
+        return q_d, qd_d, qdd_d
+
+    return traj_fn
+
+def make_inertial_traj_fn(csv_path):
+    """
+    Load exciting trajectory from CSV (output of Go1_RegressorExample.cpp).
+    CSV columns: [t, q0, q1, q2, v0, v1, v2, qdd0, qdd1, qdd2, tau0, tau1, tau2]
+    Returns a trajectory function that interpolates the CSV data.
+    """
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Exciting trajectory CSV not found: {csv_path}")
+
+    data  = np.loadtxt(csv_path)
+    t_vec = data[:, 0]
+
+    def traj_fn(t):
+        # Clip t to valid range
+        t_c = np.clip(t, t_vec[0], t_vec[-1])
+
+        # Interpolate position, velocity, acceleration (columns 1-9)
+        q_d   = np.array([np.interp(t_c, t_vec, data[:, 1+j]) for j in range(3)])
+        qd_d  = np.array([np.interp(t_c, t_vec, data[:, 4+j]) for j in range(3)])
+        qdd_d = np.array([np.interp(t_c, t_vec, data[:, 7+j]) for j in range(3)])
+
+        return q_d, qd_d, qdd_d
+
+    return traj_fn
+
+def make_pd_controller(kp,kd):
+    Kp = np.full(3, kp) # 3 since number of 3 joints in a leg of Go1
+    Kd = np.full(3, kd)
+
+    def ctrl_fn(q, v, qd, qd_d, qd_dd):
+        return Kp * (qd - q) + Kd * (qd_d - v)
+
+    return ctrl_fn
+
+def verify_trajectory_safety(traj_fn, model, ctrl_fn):
+
+    """
+    Check if the trajectory violates position, velocity, or torque limits before simulation.
     """
     q_min = model.lowerPositionLimit
     q_max = model.upperPositionLimit
-    
-    # Go1 hardware limits
-    TAU_LIMIT_HIP_THIGH = 23.7    # N·m
-    TAU_LIMIT_CALF      = 23.7   # N·m
-    V_LIMIT             = 30.0    # rad/s
+    margin = 0.01  # rad safety margin
 
-    # Build per-joint torque limit array (12 joints: 4 legs × [hip, thigh, calf])
-    tau_limit = np.array([
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FR
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FL
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RR
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RL
-    ])
+    # Sample 1000 points across simulation duration
+    for t in np.linspace(0, T_SIM, 1000):
+        q_d, qd_d, qdd_d = traj_fn(t)
 
-    # Sample 1000 points evenly across the simulation duration for efficiency
-    ts_sample = np.linspace(ts[0], ts[-1], 1000)
-    for t in ts_sample:
-        qd,qd_d,qd_dd = traj_fn(t)
-        
-        # Check position limits
-        if np.any(qd < q_min + margin) or np.any(qd > q_max - margin):
-            lower_violations = np.where(qd < q_min + margin)[0]
-            upper_violations = np.where(qd > q_max - margin)[0]
-            
-            error_msg = f"Trajectory joint limit violation at t={t:.4f}s!\n"
-            if len(lower_violations) > 0:
-                error_msg += f"  Lower limit violated on joint(s) {lower_violations}:\n"
-                error_msg += f"    qd: {qd[lower_violations]}\n"
-                error_msg += f"    limits: {q_min[lower_violations]}\n"
-            if len(upper_violations) > 0:
-                error_msg += f"  Upper limit violated on joint(s) {upper_violations}:\n"
-                error_msg += f"    qd: {qd[upper_violations]}\n"
-                error_msg += f"    limits: {q_max[upper_violations]}\n"
-            raise ValueError(error_msg)
+        # Position check
+        if np.any(q_d < q_min + margin) or np.any(q_d > q_max - margin):
+            viol_lower = np.where(q_d < q_min + margin)[0]
+            viol_upper = np.where(q_d > q_max - margin)[0]
+            msg = f"Position limit violation at t={t:.3f}s:"
+            if len(viol_lower) > 0:
+                msg += f" joints {viol_lower} below limit"
+            if len(viol_upper) > 0:
+                msg += f" joints {viol_upper} above limit"
+            raise ValueError(msg)
 
-    # --- Velocity check ---
+        # Velocity check
         if np.any(np.abs(qd_d) > V_LIMIT):
             viol = np.where(np.abs(qd_d) > V_LIMIT)[0]
-            raise ValueError(
-                f"Trajectory velocity limit violation at t={t:.4f}s!\n"
-                f"  Joint(s) {viol}: |qd_d|={np.abs(qd_d[viol])} > {V_LIMIT} rad/s"
-            )
-    # --- Torque check (uses controller evaluated at desired state, i.e. zero tracking error) ---
-        if ctrl_fn is not None:
-            # Evaluate torque assuming perfect tracking (q=qd, v=qd_d) → pure feedforward torque
-            tau = ctrl_fn(qd, qd_d, qd, qd_d, qd_dd)
-            if np.any(np.abs(tau) > tau_limit):
-                viol = np.where(np.abs(tau) > tau_limit)[0]
-                raise ValueError(
-                    f"Trajectory torque limit violation at t={t:.4f}s!\n"
-                    f"  Joint(s) {viol}: |tau|={np.abs(tau[viol])} > limit={tau_limit[viol]} N·m"
-                )
+            raise ValueError(f"Velocity limit violation at t={t:.3f}s: joints {viol}")
+
+        # Torque check (assuming perfect tracking: q=q_d, v=q_d_d)
+        tau = ctrl_fn(q_d, qd_d, q_d, qd_d, qdd_d)
+        if np.any(np.abs(tau) > TAU_LIMITS):
+            viol = np.where(np.abs(tau) > TAU_LIMITS)[0]
+            raise ValueError(f"Torque limit violation at t={t:.3f}s: joints {viol}, tau={tau[viol]}")
+
     print("✓ Joint limit safety verification passed.")
 
-
-
-def desired_trajectory_friction(t, local_joint_idx): 
+def ff_controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
+               model_ctrl=None, data_ctrl=None):
     """
-    Generate exciting trajectory for active_joint_idx while keeping others frozen.
-    Returns full vectors of size nq.
+    WIP: Not working currently, hopefully will not be needed
+    Inverse Dynamics Controller (Computed Torque).
+    Uses model-based feedforward + PD feedback + friction compensation.
+    If model_ctrl is None, falls back to pure PD.
+
+    Also note this is little different as defined in the paper "System Identification for Constrained Robots", since they find it combined, but we take out the IDC friction part seperately
     """
-    
-    # Center and amplitude parameters for the Go1 Front Right (FR) leg joints
-    # 0 = Hip, 1 = Thigh, 2 = Calf
-    centers = [0.0, 1.9, -1.85]
-    amplitudes = [0.7, 1.5, 0.8]
-    
-    # Map the active joint to the 3-joint leg configuration
-    c = centers[local_joint_idx]
-    A = amplitudes[local_joint_idx]
-    
-    # Multi-frequency sinusoid to excite Coulomb (Fc), Viscous (Fv), and Armature (Ia)
-    qd_joint    = c + A * (0.5*np.sin(0.5*t) + 0.3*np.sin(2.0*t) + 0.1*np.sin(7.0*t))
-    qd_d_joint  = A * (0.5*0.5*np.cos(0.5*t) + 0.3*2.0*np.cos(2.0*t) + 0.1*7.0*np.cos(7.0*t))
-    qd_dd_joint = A * (-0.5*0.25*np.sin(0.5*t) - 0.3*4.0*np.sin(2.0*t) - 0.1*49.0*np.sin(7.0*t))
-    
-    return qd_joint, qd_d_joint, qd_dd_joint
+    e   = qd   - q    # position error
+    e_d = qd_d - v    # velocity error
 
-def desired_trajectory_full(t, active_joint_idx, nq, q_nominal): #### active_joint_idx becomes an array of joints
-    """ 
-    Computes desired joint positions, velocities, and accelerations for all nq joints.
-    Only the active_joint_idx joint executes the exciting sinusoidal trajectory.
-    All other joints remain frozen at their corresponding values in q_nominal.
-    """
-    if isinstance(active_joint_idx, (int, np.integer)):
-        active_joint_idx = [active_joint_idx]
-        
-    qd = np.copy(q_nominal)
-    qd_d = np.zeros(nq)
-    qd_dd = np.zeros(nq)    
-    
-    # Get the sinusoidal trajectory for the active joint
-    # (using local_idx = active_joint_idx % 3 to map to Go1 leg joint configs)
+    # PD correction (added on top of feedforward)
+    Kp = np.ones(nv) * 40.0 
+    Kd = np.ones(nv) * 1.0
 
-    for active_joint in active_joint_idx:
-        local_joint_idx = active_joint % 3
-        qd_active, qd_d_active, qd_dd_active = desired_trajectory_friction(t, local_joint_idx)
-        
-        qd[active_joint] = qd_active
-        qd_d[active_joint] = qd_d_active
-        qd_dd[active_joint] = qd_dd_active
+    Kp[active_joint_idx] = 20.0
+    Kd[active_joint_idx] = 0.5
 
-    return qd, qd_d, qd_dd
+    if model_ctrl is None:
+        # Fallback: pure PD
+        return Kp * e + Kd * e_d
 
-def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx):
-    kp = np.ones(nv) * 40.0   # high stiffness for frozen joints
-    kd = np.ones(nv) * 1.0
-    
-    kp[active_joint_idx] = 60  # moderate for active joint
-    kd[active_joint_idx] = 3
-    # kp = np.ones(nv) * 500.0   # high stiffness for frozen joints
-    # kd = np.ones(nv) * 50.0
-    
-    # kp[active_joint_idx] = 200.0  # moderate for active joint
-    # kd[active_joint_idx] = 20.0
-    
-    tau = + kp * (qd - q) + kd * (qd_d - v)
-    return tau
+    #pin.computeAllTerms(model_ctrl, data_ctrl, q, v)
+    # Desired acceleration with PD correction
+    a_des = qd_dd + Kd * e_d + Kp * e ## using feedback linearization here
 
+    # Model-based feedforward: RNEA(q, v, a_des)
+    tau_ff = pin.rnea(model_ctrl, data_ctrl, q, v, a_des) ### what is data_ctrl here? this is just needed for the function
 
-# def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
-#                model_ctrl=None, data_ctrl=None):
-#     """
-#     Inverse Dynamics Controller (Computed Torque).
-#     Uses model-based feedforward + PD feedback + friction compensation.
-#     If model_ctrl is None, falls back to pure PD.
-
-#     Also note this is little different as defined in the paper "System Identification for Constrained Robots", since they find it combined, but we take out the IDC friction part seperately
-#     """
-#     e   = qd   - q    # position error
-#     e_d = qd_d - v    # velocity error
-
-#     # PD correction (added on top of feedforward)
-#     Kp = np.ones(nv) * 40.0 
-#     Kd = np.ones(nv) * 1.0
-
-#     Kp[active_joint_idx] = 20.0
-#     Kd[active_joint_idx] = 0.5
-
-#     if model_ctrl is None:
-#         # Fallback: pure PD
-#         return Kp * e + Kd * e_d
-
-#     #pin.computeAllTerms(model_ctrl, data_ctrl, q, v)
-#     # Desired acceleration with PD correction
-#     a_des = qd_dd + Kd * e_d + Kp * e ## using feedback linearization here
-
-#     # Model-based feedforward: RNEA(q, v, a_des)
-#     tau_ff = pin.rnea(model_ctrl, data_ctrl, q, v, a_des) ### what is data_ctrl here? this is just needed for the function
-
-#     return tau_ff 
+    return tau_ff 
 
 def central_difference_4th_order(t, velocity):
     """
@@ -222,9 +215,6 @@ def central_difference_4th_order(t, velocity):
 
     return acceleration[2:-2], dt
 
-
-
-
 def butterworth_lowpass_filter(data, cutoff, fs, order=4):
     """
     Apply a Butterworth low-pass filter to the input data.
@@ -252,172 +242,207 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
         data_filtered[:, i] = filtfilt(b, a, data[:, i])
     return data_filtered
 
-def main(active_joint=0, inactive=False):
-    if isinstance(active_joint, (int, np.integer)):
-        active_joint = [active_joint]
-    active_joint_str = "_".join(map(str, active_joint))
+def make_grid(title, actual, desired, ts_out,leg, ylabel):
+    """Helper: 4x3 grid plot for one signal type across all 12 joints."""
+    fig, axes = plt.subplots(1, 3, figsize=(14, 10), sharex=True)
+    fig.suptitle(title, fontsize=13)
+    for j in range(3):
+        jidx = j
+        ax   = axes[j]
+        ax.plot(ts_out, actual[:, jidx],
+                color='red',
+                lw=2.0 ,
+                label='actual')
+        ax.plot(ts_out, desired[:, jidx],
+                color='orange', lw=1.0, ls='--', label='desired')
+        ax.set_title(
+            f"{leg} {joint_names[j]}  (j{jidx})"
+            + (""),
+            fontsize=8,
+            fontweight='bold',
+            color='red')
+        ax.grid(True, alpha=0.4)
+        if j == 0:
+            ax.set_ylabel(ylabel, fontsize=8)
+        ax.set_xlabel("Time (s)", fontsize=8)
+        if j == 0:
+            ax.legend(fontsize=7)
+    plt.tight_layout()
+    return fig
 
-    # initialization for simulation and data collection
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Go1 Per-Leg SysID Trajectory Generator (Friction & Inertial Modes)'
+    )
+    parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['friction', 'inertial'],
+        required=True,
+        help='Mode: friction (simultaneous all 3 joints) or inertial (replay exciting traj)'
+    )
+    parser.add_argument(
+        '--leg',
+        type=str,
+        default='FR',
+        choices=['FR', 'FL', 'RR', 'RL'],
+        help='Which leg: FR (default), FL, RR, or RL'
+    )
+    parser.add_argument(
+        '--run',
+        type=int,
+        default=1,
+        help='Run ID for exciting-trajectory-<run>.csv (inertial mode only)'
+    )
+    return parser.parse_args()
+
+
+def main():
+    
+    """Main simulation pipeline."""
+    args = parse_args()
+    leg=args.leg
+
+    print(f"Mode: {args.mode}, Leg: {args.leg}")
+    if args.mode == 'inertial':
+        print(f"  Using exciting trajectory run {args.run}")
+
+
+    # ===== Load per-leg URDF (nv=3, fixed base) =====
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
+    urdf_path = os.path.abspath(
+        os.path.join(current_dir, f"../../../Robots/unitree-go1/go1_{args.leg}.urdf")
+    )
+
+    if not os.path.exists(urdf_path):
+        raise FileNotFoundError(f"URDF not found: {urdf_path}")
+
+    model = pin.buildModelFromUrdf(urdf_path)
+    data = model.createData()
+
+    assert model.nv == 3, f"Expected nv=3, got {model.nv}"
+    print(f"✓ Loaded URDF: nv={model.nv}")
     
-    model = pin.buildModelFromUrdf(urdf_filename)
-    data= model.createData()
-    # ### added for vis
-    # model_vis, collision_model, visual_model = pin.buildModelsFromUrdf(urdf_filename)
-    # data_vis = model_vis.createData()
+     # ===== Build trajectory function =====
+    if args.mode == 'friction':
+        traj_fn = make_friction_traj_fn()
+    else:  # inertial
+        csv_path = os.path.abspath(
+            os.path.join(
+                current_dir,
+                f"../SystemIdentification/ExcitingTrajectories/data/{args.leg}/exciting-trajectory-{args.run}.csv"
+            )
+        )
+        traj_fn = make_inertial_traj_fn(csv_path)
 
-    q_lower = model.lowerPositionLimit   # shape (nq,) = (12,) for full Go1
-    q_upper = model.upperPositionLimit   # shape (nq,) = (12,) for full Go1
-
-    if model.nq == 12:
-        q_nominal = np.array([0.2, 1.8, -1.7] * 4)
+     # ===== Build controller (all 3 joints always active) =====
+    if args.mode == 'friction':
+        ctrl_fn = make_pd_controller(KP_FRICTION, KD_FRICTION)
     else:
-        # Fallback for Kinova (7 joints) or other models
-        q_nominal = np.zeros(model.nq)
+        ctrl_fn = make_pd_controller(KP_INERTIAL, KD_INERTIAL)
 
-   
-    q0 = np.copy(q_nominal)  # Set initial state to the nominal pose
-    v0 = np.zeros(model.nv)
+    # ===== Safety check =====
+    print("Running safety verification...")
+    verify_trajectory_safety(traj_fn, model, ctrl_fn)
 
-    dt = 1e-4 # 0.1 ms data measurement loop
-    ts_sim = np.arange(0, 5, dt) # 5 seconds simulation
+     # ===== Simulate =====
+    print(f"Simulating {T_SIM}s with dt={DT_SIM}s...")
+    q0 = LEG_NEUTRAL.copy()
+    v0 = np.zeros(3)
+    x0 = np.concatenate([q0, v0])
 
+    ts = np.arange(0, T_SIM, DT_SIM)
 
-    # Realistic values for Go1 leg joints (adjust to your liking)
-    Fc_true = np.zeros(model.nv)
-    Fv_true = np.zeros(model.nv)
-    Ia_true = np.zeros(model.nv)
-    # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf)
-    Fc_true[0:3] = [0.5, 0.8, 0.6]   # Coulomb friction (N·m)
-    Fv_true[0:3] = [0.3, 0.5, 0.4]   # Viscous damping (N·m·s/rad)
-    Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    
-    # Wrap the trajectory function using a lambda so it accepts only time 't'
-    
-    if inactive:
-        traj_fn = lambda t: (q_nominal, np.zeros(model.nq), np.zeros(model.nq))
-        ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, [])
+    # All 3 joints are active (list [0,1,2])
+    qs, vs, taus = integrate(
+        model, ts, x0, traj_fn, ctrl_fn,
+        [0, 1, 2], FC_TRUE, FV_TRUE, IA_TRUE
+    )
+    print(f"✓ Simulation complete: {len(ts)} timesteps")
 
-    else:
-        traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal)
-        ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint) ### q's are  defined in the integrate function. 
+    # ===== Post-process: acceleration + trim =====
+    print("Computing acceleration...")
+    accs, dt_acc = central_difference_4th_order(ts, vs)
 
+    # Trim 2 samples from each boundary (lost in central difference)
+    qs_out   = qs[2:-2]
+    vs_out   = vs[2:-2]
+    taus_out = taus[2:-2]
+    accs_out = accs  # already trimmed by central_difference_4th_order
 
-    
-    # Run the safety verification BEFORE simulating
-    verify_trajectory_safety(traj_fn, ctrl_fn, ts_sim, model, margin=0.05)
-    
-    # simulate the robot dynamics using ode solver
-    # track the desired trajectory using the controller
-    qs, vs, taus = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn, active_joint, Fc_true, Fv_true, Ia_true)
+    print(f"Output shape: {qs_out.shape[0]} samples × {qs_out.shape[1]} DOF")
 
-    
-    # estimate acceleration using central difference method on velocity data
-    accs, dt = central_difference_4th_order(ts_sim, vs)
-    fs = 1 / dt
-    print(f"Completed acc cal")
-    # # filter acceleration data using a Butterworth low-pass filter
-    # cutoff = 20 # Hz
-    # accs_filtered = butterworth_lowpass_filter(accs, cutoff, fs)
-    accs_filtered = accs # filtering is not needed in simulation, but really important for hardware data
-    
-    # # save the simulation results as a text file
-    # traj_data = np.concatenate([ts_sim[:,None], qs, vs, taus], axis=1)
-    # traj_data_clipped = traj_data[2:-2, :]
-
-    if inactive:
-        output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/200_20")) + "/" ### TODO: need to change so I give argument for inactive with active leg so it makes corresponding files in same folder??
-    else:
-        output_dir = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data/gains/200_20")) + "/"
-    
-    qs_clipped   = qs[2:-2]    # trim boundary points lost to central difference
-    vs_clipped   = vs[2:-2]
-    taus_clipped = taus[2:-2]
-
+    # Optional: filter if desired (typically not needed for simulation)
+    # fs = 1 / dt_acc
+    # accs_out = butterworth_lowpass_filter(accs_out, cutoff=30, fs=fs)
 
     #### removing near zero velocity values to avoid chattering
-    if not inactive:
+    if args.mode == 'friction':
         v_threshold = 0.01
-        keep_mask = np.ones(len(vs_clipped), dtype=bool)
-        for j in active_joint:
-            keep_mask &= np.abs(vs_clipped[:, j]) >= v_threshold
-        qs_clipped   = qs_clipped[keep_mask]
-        vs_clipped   = vs_clipped[keep_mask]
-        taus_clipped = taus_clipped[keep_mask]
-        accs_filtered = accs_filtered[keep_mask]
+        keep_mask = np.ones(len(vs_out), dtype=bool)
+        for j in range(3):
+            keep_mask &= np.abs(vs_out[:, j]) >= v_threshold
+        qs_out   = qs_out[keep_mask]
+        vs_out   = vs_out[keep_mask]
+        taus_out = taus_out[keep_mask]
+        accs_out = accs_out[keep_mask]
+        ts_out   = ts[2:-2][keep_mask]  # also trim time vector
+
+    else:
+        ts_out = ts[2:-2]
+    # ===== Save CSVs =====
+    out_dir = os.path.abspath(
+        os.path.join(
+            current_dir,
+            f"../SystemIdentification/ParametersIdentification/full_params_data/{args.mode}/{args.leg}/"
+        )
+    )
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    if args.mode == 'inertial':
+        np.savetxt(out_dir + f"q_downsampled_{args.run}.csv",   qs_out,   delimiter=" ")
+        np.savetxt(out_dir + f"q_d_downsampled_{args.run}.csv",  vs_out,   delimiter=" ")
+        np.savetxt(out_dir + f"q_dd_downsampled_{args.run}.csv", accs_out, delimiter=" ")
+        np.savetxt(out_dir + f"tau_downsampled_{args.run}.csv",  taus_out, delimiter=" ")
     
     else:
-        
-    print(f"q_s clipped is {qs_clipped}")
-    print(f"v_s clipped is {vs_clipped}")
-    print(f"q_dd_clipped is {accs_filtered}")
-    print(f"tau_clipped is {taus_clipped}")
+        np.savetxt(os.path.join(out_dir, "q_downsampled.csv"),    qs_out,   delimiter=" ")
+        np.savetxt(os.path.join(out_dir, "q_d_downsampled.csv"),  vs_out,   delimiter=" ")
+        np.savetxt(os.path.join(out_dir, "q_dd_downsampled.csv"), accs_out, delimiter=" ")
+        np.savetxt(os.path.join(out_dir, "tau_downsampled.csv"),  taus_out, delimiter=" ")
 
-    os.makedirs(output_dir, exist_ok=True)
-    np.savetxt(output_dir + f"q_downsampled_filtered_{active_joint_str}.csv",   qs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_d_downsampled_filtered_{active_joint_str}.csv",  vs_clipped,   delimiter=" ")
-    np.savetxt(output_dir + f"q_dd_downsampled_filtered_{active_joint_str}.csv", accs_filtered, delimiter=" ")
-    np.savetxt(output_dir + f"tau_downsampled_filtered_{active_joint_str}.csv",  taus_clipped, delimiter=" ")
-    
+    # ── Static sanity check plots: all 12 joints ──────────────────────────
 
-        # ── Static sanity check plots: all 12 joints ──────────────────────────
-    ts_clipped = ts_sim[2:-2]
-    ts_clipped = ts_clipped[keep_mask]
-
-    leg_names   = ["FR", "FL", "RR", "RL"]   # 4 legs, rows
     joint_names = ["Hip", "Thigh", "Calf"]    # 3 joints per leg, columns
 
-    # Pre-compute desired position, velocity, acceleration for all 12 joints
+    # Pre-compute desired position, velocity, acceleration for all 3 joints
     print("Pre-computing desired trajectories for all joints...")
-    qd_des_all  = np.array([traj_fn(t)[0] for t in ts_clipped])   # (N, 12)
-    vd_des_all  = np.array([traj_fn(t)[1] for t in ts_clipped])   # (N, 12)
-    add_des_all = np.array([traj_fn(t)[2] for t in ts_clipped])   # (N, 12)
+    qd_des_all  = np.array([traj_fn(t)[0] for t in ts_out])   # (N, 3)
+    vd_des_all  = np.array([traj_fn(t)[1] for t in ts_out])   # (N, 3)
+    add_des_all = np.array([traj_fn(t)[2] for t in ts_out])   # (N, 3)
 
-    def make_grid(title, actual, desired, ylabel, active_joint):
-        """Helper: 4x3 grid plot for one signal type across all 12 joints."""
-        fig, axes = plt.subplots(4, 3, figsize=(14, 10), sharex=True)
-        fig.suptitle(title, fontsize=13)
-        for leg in range(4):
-            for j in range(3):
-                jidx = leg * 3 + j
-                ax   = axes[leg, j]
-                is_active = (jidx in active_joint)
-                ax.plot(ts_clipped, actual[:, jidx],
-                        color='royalblue' if not is_active else 'red',
-                        lw=2.0 if is_active else 1.0,
-                        label='actual')
-                ax.plot(ts_clipped, desired[:, jidx],
-                        color='orange', lw=1.0, ls='--', label='desired')
-                ax.set_title(
-                    f"{leg_names[leg]} {joint_names[j]}  (j{jidx})"
-                    + ("  ← ACTIVE" if is_active else ""),
-                    fontsize=8,
-                    fontweight='bold' if is_active else 'normal',
-                    color='red' if is_active else 'black')
-                ax.grid(True, alpha=0.4)
-                if j == 0:
-                    ax.set_ylabel(ylabel, fontsize=8)
-                if leg == 3:
-                    ax.set_xlabel("Time (s)", fontsize=8)
-                if leg == 0 and j == 0:
-                    ax.legend(fontsize=7)
-        plt.tight_layout()
-        return fig
+  
 
     make_grid("Position — Actual vs Desired (all 12 joints)",
-              qs_clipped, qd_des_all, "rad", active_joint)
+              qs_out, qd_des_all,ts_out, leg, "rad")
 
     make_grid("Velocity — Actual vs Desired (all 12 joints)",
-              vs_clipped, vd_des_all, "rad/s", active_joint)
+              vs_out, vd_des_all,ts_out, leg, "rad/s")
 
     make_grid("Acceleration — Estimated vs Desired (all 12 joints)",
-              accs_filtered, add_des_all, "rad/s²", active_joint)
+              accs_out, add_des_all, ts_out, leg, "rad/s²")
 
     plt.show()
     print("Plots complete.")
     
-    ######### MESHCAT Implementation ##################
+    
+if __name__ == "__main__":
+    main()
+
+
+######### MESHCAT Implementation ##################
     # # Start Meshcat viewer
     # viz = MeshcatVisualizer(model_vis, collision_model, visual_model)
     # viz.initViewer(open=True)   # opens browser tab automatically
@@ -535,18 +560,3 @@ def main(active_joint=0, inactive=False):
     # print("solution:\n", theta_solution)
     # print("groundtruth:\n", model.inertias[-1].toDynamicParameters())
     ##############################################
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Go1 SysID Trajectory Generator')
-    parser.add_argument('--joint', type=str, nargs='+', default=['0'],
-                        help='Active joint index or indices to excite (e.g. 0 or 0,1,2 or 0 1 2)')
-    parser.add_argument('--inactive', action='store_true',
-                        help='Generate hold-at-prone data for inactive legs (no exciting motion)')
-    args = parser.parse_args()
-    
-    active_joints = []
-    for item in args.joint:
-        for subitem in item.replace(',', ' ').split():
-            active_joints.append(int(subitem))
-            
-    main(active_joint=active_joints, inactive=args.inactive)
