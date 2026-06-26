@@ -1,116 +1,111 @@
-# Kinova-gen3 Examples
+# Go1 Examples
 
-This folder contains multiple optimization examples related to the Kinova-gen3, a 7-degree-of-freedom robotic manipulator. 
-Python interfaces are also provided to enable the use of these examples in Python, which can be found in [python/](python/README.md) folder.
+This folder contains optimization and system identification examples for the Unitree Go1 quadruped.
+Python interfaces are provided in the [python/](python/README.md) folder.
 
-## CollisionAvoidanceTrajectory
+## System Identification
 
-This folder contains two examples of trajectory generation that satisfy the following constraints over a predefined set of discrete time instances:
+The system identification pipeline identifies dynamic parameters of a single Go1 leg (3 DOF, fixed base). Two stages run sequentially:
 
-- Joint limits
-- Velocity limits
-- Torque limits
-- Collision avoidance with box obstacles
+1. **Friction ID** — identifies `Fc` (Coulomb), `Fv` (viscous damping), `Ia` (armature inertia) per joint
+2. **Inertial ID** — identifies the 10 inertial parameters per link `[m, mcx, mcy, mcz, Ixx, Ixy, Iyy, Ixz, Iyz, Izz]`
 
-In addition to ensuring safety through these constraints, the following optimization formulations are considered:
+**Physical setup**: trunk is C-clamped to a rigid table (truly fixed base). Each leg is identified independently using its 3-DOF per-leg URDF (`go1_FR/FL/RR/RL.urdf`, `nv=3`). Inactive legs are not in the model and require no torques.
 
-### KinovaOptimizer
+---
 
-The trajectory is represented using `ArmourBezierCurves`, a degree-5 Bézier curve with zero terminal velocity and acceleration. The cost function is defined as the distance between the midpoint of the trajectory and a user-defined goal configuration.
+### Stage 1: Friction Parameter Identification (Simulation)
 
-This formulation can be seen as a discrete version of [ARMOUR](https://roahmlab.github.io/armour/), a receding-horizon trajectory optimization framework. Given a sequence of waypoints (e.g., from a high-level path planner like RRT), ARMOUR optimizes a degree-5 Bézier curve at each iteration to move the robot closer to the next waypoint while respecting all constraints that the high-level planner might not account for.
-
-### KinovaLongerHorizonOptimizer
-
-This trajectory optimizer finds a safe trajectory that connects a user-defined start configuration to a goal configuration. The trajectory is represented using `PiecewiseBezierCurves`.
-
-The cost function is customizable, allowing optimization for various objectives, such as:
-- Minimizing overall torque consumption
-- Minimizing path length
-- Minimizing jerk for smoother and more energy-efficient motions
-
-## CollisionAvoidanceInverseKinematics
-
-This folder contains an example of solving inverse kinematics with collision avoidance constraints for a Kinova-gen3 equipped with a gripper. The following constraints are enforced:
-
-- Joint limits.
-- End-effector kinematic constraints, including position and orientation constraints.
-- Collision avoidance with box obstacles.
-
-Since inverse kinematics deals with finding a single joint configuration rather than a full trajectory, the configuration is represented using `Plain`.
-
-The cost function minimizes the distance from the initial guess. 
-Conceptually, this can be interpreted as:
-
-- The robot is at a given configuration.
-- It must move to a new configuration that satisfies specific position and orientation constraints while avoiding obstacles.
-- The cost function ensures that the final configuration remains as close as possible to the initial guess.
-
-A key limitation of this formulation is its sensitivity to the initial guess. If the initial guess is poor, the optimization may struggle to find a feasible solution. However, this issue is less frequent for the Kinova-gen3, as it has 7 degrees of freedom (DOF), providing more flexibility in satisfying constraints.
-For 6 DOF robots, users may need to consider alternative formulations to improve robustness.
-
-## Armour
-
-This folder contains an implementation that integrates both [ARMOUR](https://roahmlab.github.io/armour/) and [WAITR](https://roahmlab.github.io/waitr-dev/).
-
-Building on the discussion in CollisionAvoidanceTrajectory, traditional trajectory optimization formulations typically enforce constraints only at discrete time instances. 
-This means that safety between time steps is not guaranteed.
-
-Our previous work, [ARMTD](https://arxiv.org/abs/2002.01591), first addressed this issue for robotic manipulators in the context of collision avoidance. 
-This was further extended in [ARMOUR](https://roahmlab.github.io/armour/), which not only ensured continuous-time safety in collision avoidance but also enforced torque limits.
-[WAITR](https://roahmlab.github.io/waitr-dev/) builds upon these concepts by providing safety guarantees for contact constraints. 
-Specifically, it ensures stability when the robot gripper holds a plate with an object not rigidly attached, a problem commonly known as the waiter motion problem.
-
-This folder provides an implementation that integrates all of our previous work. 
-By modifying the configuration YAML file, users can solve different types of problems based on their specific requirements.
-More details can be found in the [Armour](../Kinova/Armour/) folder.
-
-The Hessian of this optimization problem is not provided.
-
-## SystemIdentification
-
-This folder contains several examples for system identification of Kinova-gen3.
-There are two main topics in the context of system identification:
-
-### Exciting Trajectories
-
-Exciting trajectories are specifically designed motion paths that maximize the information gained about the system's dynamics. In the context of system identification, these trajectories are crucial because they help in accurately estimating the parameters of the Kinova-gen3 robotic manipulator.
-
-By carefully designing these trajectories, we can ensure that the collected data is rich in information, which leads to more precise and reliable system models. These models are essential for various applications, including control design, simulation, and optimization.
-
-The examples in the [ExcitingTrajectories](../Kinova/SystemIdentification/ExcitingTrajectories/) folder demonstrate how to generate and utilize exciting trajectories to improve the accuracy of system identification for the Kinova-gen3 while ensuring safety, such as joint limits, torque limits, or collision avoidance.
-More details can be found in the folder.
-
-### Parameter Identification
-
-The [ParametersIdentification](../Kinova/SystemIdentification/ParametersIdentification/) folder contains the following examples:
-
-#### Friction Identification
-In the context of robotic manipulators, motor friction can significantly affect the accuracy and performance of the system. 
-To model the friction in the motors of the Kinova-gen3, we can use a simpler model that includes offset, static friction, damping, and armature (transmission inertia) components. 
-The mathematical model for the motor friction `\tau_f` can be expressed as:
+The friction model per joint is:
 
 ```math
-\tau_f(\dot{q}, \ddot{q}) = \beta + F_c \cdot \text{sign}(\dot{q}) + F_v \cdot \dot{q} + I_a \cdot \ddot{q}
+\tau_f(\dot{q}, \ddot{q}) = F_c \cdot \text{sign}(\dot{q}) + F_v \cdot \dot{q} + I_a \cdot \ddot{q}
 ```
-where:
-- `\beta` is the offset torque, which accounts for any constant bias in the system.
-- `F_c` is the static friction.
-- `F_v` is the damping coefficient, which represents the torque proportional to the joint velocity `\dot{q}`.
-- `I_a` is the armature (transmission inertia), which represents the torque proportional to the joint acceleration `\ddot{q}`.
 
-By assuming that the inertial parameters of the robot have been provided by the manufacturer (the URDF of the robot), we can identify these motor friction parameters by following certain exciting trajectories and recording the joint positions, velocities and applied torques.
+> On real hardware, add an offset term `β` to absorb torque sensor bias. Enable via `include_offset_input = true` in `TestFrictionParametersIdentification.cpp`.
 
-#### End Effector Identification
+#### Step 1 — Generate trajectory data (Python simulation)
 
-Assuming that the robot's inertial parameters and motor friction parameters are known, accurate dynamic modeling can be achieved for the robot itself. However, in manipulation tasks, when the robot picks up an unknown object, its overall dynamics change.
-To ensure precise control and stability, it becomes crucial for the robot to identify the inertial parameters of the object being held. 
-More specifically, this involves estimating the combined inertial properties of the end effector and the object as a single entity. 
-This estimation allows for more accurate force and motion planning, improving performance in tasks such as object transport, placement, and interaction with the environment.
+All 3 joints of the target leg are excited **simultaneously** with sinusoidal frequencies to maximize friction regressor rank. A PD controller tracks the desired trajectory while friction is added in the simulator.
 
-The [ParametersIdentification](../Kinova/SystemIdentification/ParametersIdentification/) folder contains two different methods to estimate the end effector inertial parameters.
-One is based on the inverse dynamics regressor which requires estimation of joint acceleration.
-The other is based on the system momentum regressor which does not require joint acceleration.
+```bash
+cd Examples/Unitree_Go1/python
+python3 sysid_trajectory_generator.py --mode friction --leg FR
+```
+
+This writes 4 CSV files (one per signal, `N_samples × 3`) to:
+```
+SystemIdentification/ParametersIdentification/full_params_data/friction/FR/
+    q_downsampled.csv
+    q_d_downsampled.csv
+    q_dd_downsampled.csv
+    tau_downsampled.csv
+```
+
+**Trajectory design** (simultaneous, all 3 joints):
+
+| Joint | Center (rad) | Amplitude (rad) | Frequency (Hz) | Phase (rad) |
+|-------|-------------|-----------------|---------------|-------------|
+| Hip   | 0.0         | 0.3             | 0.5           | 0           |
+| Thigh | 1.9         | 0.4             | 1.0           | π/3         |
+| Calf  | −1.85       | 0.5             | 1.5           | 2π/3        |
+
+Frequencies are incommensurate (no harmonic relationships) to prevent rank deficiency in the regressor.
+
+#### Step 2 — Run the C++ solver
+
+```bash
+cd /workspaces/RAPTOR/build
+./Go1_SysidFriction_test 1    # "1" matches the *_1.csv file suffix
+```
+
+**Output** (`full_params_data/friction/FR/`):
+```
+friction_parameters_solution_1.csv   ← [Fc(3), Fv(3), Ia(3)] = 9 values
+friction_estimate_tau_1.csv          ← reconstructed torque for validation
+```
+
+CSV layout:
+```
+row 0–2:   Fc  per joint (hip, thigh, calf)
+row 3–5:   Fv  per joint
+row 6–8:   Ia  per joint
+```
+
+#### Step 3 — Verify
+
+Check `friction_parameters_solution_1.csv` against the true parameters injected in simulation:
+
+```python
+# Expected (from sysid_trajectory_generator.py constants)
+FC_TRUE = [0.8, 0.8, 0.8]   # N·m
+FV_TRUE = [0.5, 0.5, 0.5]   # N·m·s/rad
+IA_TRUE = [0.03, 0.03, 0.03] # kg·m²
+```
+
+Run all four legs by repeating Steps 1–2 with `--leg FL`, `--leg RR`, `--leg RL`.
+
+---
+
+### Exciting Trajectories (for Inertial ID)
+
+The [ExcitingTrajectories](SystemIdentification/ExcitingTrajectories/) folder contains `Go1_RegressorExample.cpp`, which designs a trajectory that minimizes the condition number of the joint torque regressor for a single leg. Run once per leg offline:
+
+```bash
+./Go1_exciting_traj 1 FR    # outputs data/FR/exciting-trajectory-1.csv
+```
+
+---
+
+### Stage 2: Inertial Parameter Identification
+
+> **WIP.** See `knowledge_base.md` §"FEATURE (TODO)" for the full-30-parameter + Tikhonov design.
+
+The Go1 FR leg has **rank 17 out of 30** identifiable parameters (13 structural zeros from hip x-axis and y-axis joint geometry). Unidentifiable parameters are held at URDF values. Identification uses Log-Cholesky reparameterization (Rucker & Wensing 2022) so any optimizer value is physically consistent — no LMI constraints needed.
+
+Two solvers available (both in `SystemIdentification/ParametersIdentification/`):
+- **IIDD** (`TestEndEffectorParametersIdentification`) — requires estimated joint acceleration
+- **Momentum** (`TestEndEffectorParametersIdentificationMomentum`) — avoids `q̈`, preferred for hardware uncertainty analysis
 
 
 

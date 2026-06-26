@@ -374,8 +374,8 @@ def main():
     print(f"Output shape: {qs_out.shape[0]} samples × {qs_out.shape[1]} DOF")
 
     # Optional: filter if desired (typically not needed for simulation)
-    # fs = 1 / dt_acc
-    # accs_out = butterworth_lowpass_filter(accs_out, cutoff=30, fs=fs)
+    fs = 1 / dt_acc
+    accs_out = butterworth_lowpass_filter(accs_out, cutoff=30, fs=fs)
 
     #### removing near zero velocity values to avoid chattering
     if args.mode == 'friction':
