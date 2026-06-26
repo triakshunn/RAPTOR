@@ -84,6 +84,9 @@ We provide the following examples:
     - Multi-step periodic gait optimization.
     - A simple example migrated from code in [Talos](Examples/Talos/).
 
+- **Unitree-Go1**
+    - Code migrated from Kinova-Gen3 for Go1 inertial and friction sysID.
+
 ## Bibtex
 To cite **RAPTOR** in your academic research, please use the following bibtex entry:
 ```bibtex

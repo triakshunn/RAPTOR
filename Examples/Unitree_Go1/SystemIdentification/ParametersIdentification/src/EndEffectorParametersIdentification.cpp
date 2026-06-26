@@ -12,6 +12,9 @@ namespace RAPTOR {
 // EndEffectorParametersIdentification::~EndEffectorParametersIdentification()
 // {
 // }
+/// The parameters are given as 𝑣=[𝑚,𝑚𝑐𝑥,𝑚𝑐𝑦,𝑚𝑐𝑧,𝐼𝑥𝑥,𝐼𝑥𝑦,𝐼𝑦𝑦,𝐼𝑥𝑧,𝐼𝑦𝑧,𝐼𝑧𝑧]𝑇 ////
+/// One thing to note the process is z->theta(pushed in phi)->cost(uses phi)->optimize->z->theta_solution
+
 
 bool EndEffectorParametersIdentification::set_parameters(
     const Model &model_input, const VecX offset_input) {
@@ -23,6 +26,7 @@ bool EndEffectorParametersIdentification::set_parameters(
 
   phi = VecX::Zero(10 * modelPtr_->nv);
   for (Index i = 0; i < modelPtr_->nv; i++) {
+    
     const int pinocchio_joint_id = i + 1;
     phi.segment<10>(10 * i) =
         modelPtr_->inertias[pinocchio_joint_id].toDynamicParameters();
@@ -134,7 +138,7 @@ void EndEffectorParametersIdentification::initialize_regressors(
 
     pinocchio::computeJointTorqueRegressor(*modelPtr_, *dataPtr_, q, q_d, q_dd);
 
-    A_seg_i.middleRows(i * modelPtr_->nv, modelPtr_->nv) =
+    A_seg_i.middleRows(i * modelPtr_->nv, modelPtr_->nv) = // this was done using the momentum equation in paper manually in momentum regressors
         dataPtr_->jointTorqueRegressor;
     b_seg_i.segment(i * modelPtr_->nv, modelPtr_->nv) =
         tau - modelPtr_->friction.cwiseProduct(q_d.cwiseSign()) -
@@ -165,17 +169,17 @@ void EndEffectorParametersIdentification::reset() {
 bool EndEffectorParametersIdentification::get_nlp_info(
     Index &n, Index &m, Index &nnz_jac_g, Index &nnz_h_lag,
     IndexStyleEnum &index_style) {
-  // number of decision variables
-  n = 10; // End-effector parameters
+  // number of decision variables, this is inherited to momentum regressor class also, so will need to change. 
+  n = 10; // End-effector parameters, can change to 30
   numVars = n;
 
   // number of constraints
   numCons = 0;
   m = numCons;
 
-  nnz_jac_g = n * m;
-  nnz_h_lag = n * (n + 1) / 2;
-
+  nnz_jac_g = n * m;  // ??
+  nnz_h_lag = n * (n + 1) / 2; // ??
+ 
   // use the C style indexing (0-based)
   index_style = TNLP::C_STYLE;
 
@@ -189,13 +193,13 @@ bool EndEffectorParametersIdentification::eval_f(Index n, const Number *x,
     THROW_EXCEPTION(IpoptException, "*** Error wrong value of n in eval_f!");
   }
 
-  VecX z = Utils::initializeEigenVectorFromArray(x, n);
-  phi.tail(10) = z_to_theta(z);
+  VecX z = Utils::initializeEigenVectorFromArray(x, n); // what is this??? x is array and n is size, basically an eigen vector from array. 
+  phi.tail(10) = z_to_theta(z); // loop this and can get all 30 columns
 
   // Compute the ojective function
   obj_value = 0;
   for (Index i = 0; i < Aseg.size(); i++) {
-    const VecX diff = Aseg[i] * phi - bseg[i];
+    const VecX diff = Aseg[i] * phi - bseg[i]; // residual
     obj_value += 0.5 * diff.dot(diff);
   }
 
@@ -267,7 +271,7 @@ void EndEffectorParametersIdentification::finalize_solution(
   Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value,
                                ip_data, ip_cq);
 
-  theta_solution = z_to_theta(solution);
+  theta_solution = z_to_theta(solution); 
 }
 
 Eigen::Vector<double, 10>

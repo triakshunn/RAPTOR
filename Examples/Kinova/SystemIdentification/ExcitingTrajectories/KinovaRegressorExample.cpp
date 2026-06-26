@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
         Eigen::Vector3d(0.53, 0.49, 0.56), // back wall
         Eigen::Vector3d(-0.39, -0.84, 0.56), // bar near the control
         Eigen::Vector3d(-0.39, -0.17, 0.56), // bar bewteen 10 and 20 change to wall
-        Eigen::Vector3d(0.0, 0.0, 1.12), // ceiling
+        Eigen::Vector3d(0.0, 0.0, 1.12), /
         Eigen::Vector3d(0.47, -0.09, 1.04) // top camera
     };
     std::vector<Eigen::Vector3d> boxOrientations = {

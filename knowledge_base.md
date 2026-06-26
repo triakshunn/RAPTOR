@@ -1123,3 +1123,45 @@ Setting an unidentifiable parameter to any value produces **identical predicted 
 
 The 17 identifiable parameters are the **only ones that affect torque prediction accuracy**. Unidentifiable parameters contribute zero to any torque by definition — so URDF values are perfectly adequate for them, and the system identification effort should focus entirely on the identifiable subspace.
 
+---
+
+## FEATURE (TODO): Full-Leg (30-param) Inertial ID + Tikhonov
+
+Generalize `EndEffectorParametersIdentification` from last-link-only (tail-10) to the whole leg (30 params). **All changes live in the base class → momentum solver inherits them for free** (momentum does NOT override `z_to_theta`/`eval_*`/`get_nlp_info`).
+
+### z → θ → φ flow (what is actually optimized)
+
+```
+IPOPT moves  z  ──z_to_theta──►  θ (one link, 10)  ──stack──►  φ (full model, 30)  ──►  cost = ½‖A·φ − b‖²
+```
+
+- **`z`** (10 per link) = Log-Cholesky coords = **the decision variable** (unconstrained, any z∈ℝⁿ is physical). `α=z[0]` is log-mass: `m=exp(2α)`, and α scales *every* θ component (→ why columns can't be cleanly dropped).
+- **`θ`** = `z_to_theta(z)` = one link's 10 physically-consistent params `[m,mcx,mcy,mcz,Ixx,Ixy,Iyy,Ixz,Iyz,Izz]`. **Derived, never optimized.**
+- **`φ`** (30) = full-model params; identified blocks = θ(z), rest = URDF. Fed to regressor. **Derived.**
+- We optimize **only `z`**; θ,φ recomputed every `eval_f/grad/hess`. Log-Cholesky bakes physical consistency into the parameterization → unconstrained NLP (no LMIs).
+
+### 10 → 30 generalization (base class)
+
+`z_to_theta`/`d_z_to_theta`/`dd_z_to_theta` stay **10→10, unchanged** — just call per link in a loop. Build a **block-diagonal 30×30 `dtheta`** (three 10×10 blocks). Changes: `get_nlp_info` n=10→30; `x0` size 30; `eval_f/grad/hess` replace `phi.tail(10)`→full `phi`, `A.rightCols(10)`→full `A`, loop `ddtheta` over j<30 mapping `j→(link j/10, local j%10)`; `theta_solution` `Vec10`→`VecX(30)`.
+
+### Rank deficiency fix = Tikhonov ridge (NOT column drop, NOT rankIdx)
+
+30-col regressor is rank 17/30 (13 structural zeros, §12) → Hessian `H` singular → IPOPT undetermined in 13 dirs AND `LDLT` inversion blows up. `rankIdx`/SVD-skip does NOT transfer (that trick edits an SVD-metric cost; here cost is a *residual* that's flat, not blown-up — and ID must emit values for dead params, so a prior is mandatory). Column-drop fails because Log-Cholesky entangles z-coords. **Fix = add ridge to the cost** (one knob fixes IPOPT solve + LDLT + pins dead params to URDF):
+
+```
+f(z) = ½ Σ_s‖A_s·φ(z) − b_s‖²  +  ½λ‖φ(z) − φ_orig‖²       (φ-space, physical)
+```
+- grad: `[Σ diffᵀA + λ(φ−φ_orig)]·dtheta`
+- Hess: data-GN + data-curv + **`λ·dthetaᵀdtheta`** (the PD fixer, fills the 13 flat dirs) + `λ·Σ_j(φ−φ_orig)_j·ddtheta(j)`
+- **Simpler variant** (recommended to start): ridge in z-space `½λ‖z − z_URDF‖²` → `grad += λ(z−z_URDF)`, `H += λI` (guaranteed PD); `z_URDF = LogCholesky⁻¹(φ_orig)` once in `set_parameters`.
+- λ ≈ ε·trace(data GN)/30, ε∈[1e-6,1e-3]. Refinement: weighted `W=diag(1/φ_orig²)` for params spanning orders of magnitude.
+
+### Momentum-only: uncertainty block
+
+Generalizing `finalize_solution` uncertainty (tail-10→30): `A.rightCols(10)`→full A, `phi.tail(10)`→full phi, drop the "other-link" source (`A.leftCols(10*(nv-1))` now empty), `theta_uncertainty` `Vec10d`→`VecX(30)`. `p_z_p_eta` (=`H`) is rank-17 → needs λ to make LDLT clean. Uncertainty is rigorous only for momentum (no q̈; noise enters cleanly via `b`). IIDD needs q̈ which contaminates `A` itself (errors-in-variables) → stub uncertainty there.
+
+### Suggested order
+1. Validate plumbing+point estimates on **IIDD** (trivial `finalize_solution`, uses filtered q̈), full-30 + z-space ridge.
+2. Port to **momentum** for hardware-grade + uncertainty.
+Diagnostic: print column-norms/rank → confirm 17 identifiable match URDF tightly, 13 sit at URDF.
+

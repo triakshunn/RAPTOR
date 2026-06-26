@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Load the robot model
-  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf"; // urdf based on args
+  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf"; // TODO: urdf based on args
 
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 
   // load the data
   std::string trajectory_filename =
-      folder_name + "inertial" + std::string(argv[1]) + ".csv"; /// load the trajectory data here 
+      folder_name + "inertial" + std::string(argv[1])+ std::string(argv[1]) + ".csv"; /// load the trajectory data here 
   // std::string trajectory_filename =
   // "../Examples/Kinova/SystemIdentification/ExcitingTrajectories/data/T10_d5_slower/exciting-trajectory-"
   // + std::string(argv[1]) + ".csv"; std::string trajectory_filename =
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
   std::cout << "solution: " << mynlp->solution.transpose() << std::endl;
   std::cout << "parameter solution: "
             << mynlp->z_to_theta(mynlp->solution).transpose() << std::endl;
-  std::cout << "groundtruth: " << mynlp->phi_original.tail(10).transpose()
+  std::cout << "groundtruth: " << mynlp->phi_original.transpose()
             << std::endl;
 
   return 0;

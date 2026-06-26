@@ -30,9 +30,9 @@ bool EndEffectorParametersIdentificationMomentum::set_parameters(
             modelPtr_->inertias[pinocchio_joint_id]
                 .toDynamicParameters();
     }
-    phi_original = phi;
+    phi_original = phi; // so phi comes from URDF
 
-    std::cout << "End effector estimation from URDF file: " << phi_original.tail(10).transpose() << std::endl;
+    std::cout << "Inertial parameter estimation from URDF file: " << phi_original.transpose() << std::endl;
 
     offset = offset_input;
     if (offset.size() != modelPtr_->nv) { // offset is disabled
@@ -40,7 +40,7 @@ bool EndEffectorParametersIdentificationMomentum::set_parameters(
     }
 
     // simply give 0 as initial guess
-    x0 = VecXd::Zero(10);
+    x0 = VecXd::Zero(10); // 30???
 
     return true;
 }
@@ -48,20 +48,22 @@ bool EndEffectorParametersIdentificationMomentum::set_parameters(
 void EndEffectorParametersIdentificationMomentum::add_trajectory_file(
     const std::string filename_input,
     const SensorNoiseInfo sensor_noise_input,
-    const int H_input,
+    const int H_input, // what is this ??? 
     const TimeFormat time_format,
     const int downsample_rate) {
     // this trajectory is to compute momentum regressors
     trajPtrs_.push_back(std::make_shared<TrajectoryData>(filename_input, 
                                                          sensor_noise_input,
                                                          time_format,
-                                                         downsample_rate));
+                                                         downsample_rate)); // vector of smart pointers
 
     if (trajPtrs_.back()->Nact != modelPtr_->nv) {
         throw std::invalid_argument("The number of active joints in the trajectory does not match the robot model.");
     }
 
     trajectoryFilenames_.push_back(filename_input);
+    //[time, positions, velocities, accelerations/torques] or\n"
+    //              << "    [time, positions, velocities]"  ::: Trajectory Data 
 
     // this trajectory is to compute gravity regressors,
     // so set velocity to 0 while acceleration is already 0 in TrajectoryData
@@ -74,7 +76,7 @@ void EndEffectorParametersIdentificationMomentum::add_trajectory_file(
     for (Index i = 0; i < trajPtrs_.back()->N; i++) {
         trajPtrs2_.back()->tspan(i) = trajPtrs_.back()->tspan(i);
         trajPtrs2_.back()->q(i) = trajPtrs_.back()->q(i);
-    }
+    } // so trajPtrs2 only has q ig. since the above constructor creates empty trajectories. 
 
     initialize_regressors(trajPtrs_.back(),
                           trajPtrs2_.back(),
@@ -93,12 +95,12 @@ void EndEffectorParametersIdentificationMomentum::initialize_regressors(const st
                                                                         const std::shared_ptr<TrajectoryData>& trajPtr2_,
                                                                         const int H_input) {
     // create regressor compute object
-    mrPtr_ = std::make_shared<MomentumRegressor>(*modelPtr_, trajPtr_);
+    mrPtr_ = std::make_shared<MomentumRegressor>(*modelPtr_, trajPtr_); // TODO: Is the MomentumRegressor general for 10 elements or 30 elements?? 
     ridPtr_ = std::make_shared<RegressorInverseDynamics>(*modelPtr_, trajPtr2_, false);
 
     // forward integration horizon
-    H = H_input;
-    int num_segment = trajPtr_->N / H - 1;
+    H = H_input; // what is H_input? (is it individual segment length?)
+    int num_segment = trajPtr_->N / H - 1; 
 
     if (num_segment <= 0) {
         THROW_EXCEPTION(IpoptException, "0 segments");
@@ -132,7 +134,7 @@ void EndEffectorParametersIdentificationMomentum::initialize_regressors(const st
             const MatXd& Y_CTv_i = mrPtr_->Y_CTv.middleRows(j * modelPtr_->nv, modelPtr_->nv);
             const MatXd& Yg_i = ridPtr_->Y.middleRows(j * modelPtr_->nv, modelPtr_->nv);
 
-            int_Y_CTqd_g += (Y_CTv_i - Yg_i) * dt;
+            int_Y_CTqd_g += (Y_CTv_i - Yg_i) * dt; // idk about this??
 
             // Note that here trajPtr_->q_dd stores the applied torque
             int_ctrl += (trajPtr_->q_dd(j) -
@@ -141,13 +143,13 @@ void EndEffectorParametersIdentificationMomentum::initialize_regressors(const st
                          offset) * dt;
         }
 
-        A_seg_i.middleRows(i * modelPtr_->nv, modelPtr_->nv) = (Y_Hqd_2 - Y_Hqd_1) - int_Y_CTqd_g;
+        A_seg_i.middleRows(i * modelPtr_->nv, modelPtr_->nv) = (Y_Hqd_2 - Y_Hqd_1) - int_Y_CTqd_g; // equation 13 in the paper (this is row slicing btw, so we are adding rows here)
         b_seg_i.segment(i * modelPtr_->nv, modelPtr_->nv) = int_ctrl - 
                                                             modelPtr_->armature.cwiseProduct(
                                                                 trajPtr_->q_d(seg_end) - trajPtr_->q_d(seg_start));
     }
 
-    Aseg.push_back(A_seg_i);
+    Aseg.push_back(A_seg_i); // has the complete trajectory here
     bseg.push_back(b_seg_i);
 }
 
@@ -179,9 +181,9 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
     const IpoptData*           ip_data,
     IpoptCalculatedQuantities* ip_cq
 ) {
-    Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value, ip_data, ip_cq);
+    Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value, ip_data, ip_cq); // cost is being made. 
 
-    theta_solution = z_to_theta(solution);
+    theta_solution = z_to_theta(solution); // only defined for 10 params not 30 // returns the transformation so this is the answer then, and the below code is just for uncertainity estimation. 
 
     std::cout << "Performing error analysis" << std::endl;
 
@@ -198,12 +200,12 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
         row_start += Aseg_i.rows();
     }
 
-    const MatXd& A_opt = A.rightCols(10);
+    const MatXd& A_opt = A.rightCols(10); // should be all A_opt?? 
     const VecXd b_opt = b - A * phi_original;
 
     Mat10d dtheta;
     Eigen::Array<Mat10d, 1, 10> ddtheta;
-    phi.tail(10) = dd_z_to_theta(solution, dtheta, ddtheta);
+    phi.tail(10) = dd_z_to_theta(solution, dtheta, ddtheta); // entire phi here no? defined for 10 params only. also diff between phi and theta here. 
     VecXd diff = A * phi - b;
 
     MatXd temp1 = A_opt * dtheta;
@@ -213,7 +215,7 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
     temp4.setZero();
     for (Index i = 0; i < 10; i++) {
         temp4 += temp2(i) * ddtheta(i);
-    }
+    } 
     Mat10d p_z_p_eta = temp3 + temp4;
     Eigen::LDLT<MatXd> ldlt(p_z_p_eta);
     Mat10d p_z_p_eta_inv;
