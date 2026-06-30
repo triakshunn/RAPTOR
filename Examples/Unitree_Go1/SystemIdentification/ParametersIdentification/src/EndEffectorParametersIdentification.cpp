@@ -33,8 +33,8 @@ bool EndEffectorParametersIdentification::set_parameters(
   }
   phi_original = phi;
 
-  std::cout << "End effector estimation from URDF file: "
-            << phi_original.tail(10).transpose() << std::endl;
+  std::cout << "Go1 leg inertial parameters from URDF file: "
+            << phi_original.transpose() << std::endl;
 
   offset = offset_input;
   if (offset.size() != modelPtr_->nv) { // offset is disabled
@@ -42,8 +42,9 @@ bool EndEffectorParametersIdentification::set_parameters(
   }
 
   // simply give 0 as initial guess
-  x0 = VecX::Zero(10);
-
+  lambda_ridge=lambda_ridge_input;  
+  x0 = VecX::Zero(10*modelPtr_->nv);
+  
   return true;
 }
 
@@ -170,7 +171,7 @@ bool EndEffectorParametersIdentification::get_nlp_info(
     Index &n, Index &m, Index &nnz_jac_g, Index &nnz_h_lag,
     IndexStyleEnum &index_style) {
   // number of decision variables, this is inherited to momentum regressor class also, so will need to change. 
-  n = 10; // End-effector parameters, can change to 30
+  n = 10* modelPtr_->nv; // The entire leg inertial parameters
   numVars = n;
 
   // number of constraints
@@ -193,17 +194,22 @@ bool EndEffectorParametersIdentification::eval_f(Index n, const Number *x,
     THROW_EXCEPTION(IpoptException, "*** Error wrong value of n in eval_f!");
   }
 
-  VecX z = Utils::initializeEigenVectorFromArray(x, n); // what is this??? x is array and n is size, basically an eigen vector from array. 
-  phi.tail(10) = z_to_theta(z); // loop this and can get all 30 columns
+  VecX z = Utils::initializeEigenVectorFromArray(x, n); // (timesteps*number_of_joints)*(10*number_of_joints)
+  
+  const nv= modelPtr_->nv
+  for(int k=0; k<nv; k++ ){
+    phi.segment<10>(10*k)=z_to_theta(z.segment<10>(10*k)); // iterate through all phi columns
+  }
+  
 
   // Compute the ojective function
   obj_value = 0;
   for (Index i = 0; i < Aseg.size(); i++) {
     const VecX diff = Aseg[i] * phi - bseg[i]; // residual
-    obj_value += 0.5 * diff.dot(diff);
+    obj_value += 0.5 * diff.dot(diff) + (lambda_ridge * (phi-phi_original).squaredNorm()) // added the normalization term. (Possible ToDo direction: only subtract for unidentifiable columns)
   }
 
-  update_minimal_cost_solution(n, z, new_x, obj_value);
+  update_minimal_cost_solution(n, z, new_x, obj_value); // function to assign z and obj_value in the optimizer solution. 
 
   return true;
 }
@@ -216,16 +222,34 @@ bool EndEffectorParametersIdentification::eval_grad_f(Index n, const Number *x,
                     "*** Error wrong value of n in eval_grad_f!");
   }
 
+  const nv= modelPtr_->nv
+
   VecX z = Utils::initializeEigenVectorFromArray(x, n);
-  Mat10 dtheta;
-  phi.tail(10) = d_z_to_theta(z, dtheta);
+  Mat10 dtheta; // (10*10)
+  std::vector<Mat10> dtheta_blocks(nv) // 3*10*10
+
+  for(int k=0; k<nv; k++ ){
+    phi.segment<10>(10*k)=d_z_to_theta(z.segment<10>(10*k), dtheta_blocks[k]); // iterate through all phi columns
+  }
 
   // Compute the gradient
   VecX grad_f_vec = VecX::Zero(n);
   for (Index i = 0; i < Aseg.size(); i++) {
     const VecX diff = Aseg[i] * phi - bseg[i];
-    grad_f_vec += diff.transpose() * Aseg[i].rightCols(10) * dtheta;
+    VecX Atdiff = Aseg[i].transpose() * diff;   // 30-vector
+    for (int k=0; k<nv; k++){
+      grad_f_vec.segment<10>(10*k) += dtheta_blocks[k].transpose()*Atdiff.segment<10>(10*k)
+    }
   }
+
+  // Ridge gradient: λ · (∂φ/∂z)ᵀ · (φ - φ_orig)
+  const VecX phi_diff = phi - phi_original;
+  for (int k = 0; k < nv; k++) {
+      grad_f_vec.segment<10>(10 * k) +=
+          lambda_ridge * dtheta_blocks[k].transpose() * phi_diff.segment<10>(10 * k);
+  }
+
+
 
   for (Index i = 0; i < n; i++) {
     grad_f[i] = grad_f_vec(i);
@@ -245,19 +269,49 @@ bool EndEffectorParametersIdentification::eval_hess_f(Index n, const Number *x,
   VecX z = Utils::initializeEigenVectorFromArray(x, n);
   Mat10 dtheta;
   Eigen::Array<Mat10, 1, 10> ddtheta;
-  phi.tail(10) = dd_z_to_theta(z, dtheta, ddtheta);
+  const nv= modelPtr_->nv
+  std::vector<Mat10> dtheta_blocks(nv);
+  std::vector<Eigen::Array<Mat10, 1, 10>> ddtheta_blocks(nv);
+  
+  for (int i=0; i<nv; i++){
+    phi.segment<10>(10*i)=dd_z_to_theta(z.segment<10>(10*i),dtheta_blocks[k], ddtheta_blocks[k]);
+  }
+
+  // Build block-diagonal dtheta_full (n × n)
+  MatX dtheta_full = MatX::Zero(n, n);
+  for (int k = 0; k < nv; k++) {
+      dtheta_full.block<10, 10>(10 * k, 10 * k) = dtheta_blocks[k];
+  }
 
   // Compute the Hessian
   hess_f = MatX::Zero(n, n);
   for (Index i = 0; i < Aseg.size(); i++) {
     const VecX diff = Aseg[i] * phi - bseg[i];
-    MatX temp1 = Aseg[i].rightCols(10) * dtheta;
-    hess_f += temp1.transpose() * temp1;
 
-    MatX temp2 = diff.transpose() * Aseg[i].rightCols(10);
-    for (Index j = 0; j < n; j++) {
-      hess_f += temp2(j) * ddtheta(j);
+    MatX temp1 = Aseg[i] * dtheta_full;
+    hess_f += temp1.transpose() * temp1;
+    
+    const VecX Atdiff=Aseg[i].transpose()*diff;
+    // MatX temp2 = diff.transpose() * Aseg[i].rightCols(10); // 30*(T*3) * (T*3)*30 == 30*30
+    for (int i=0; i<nv; i++){
+      for (Index j = 0; j < n; j++) // n=10*model.nv
+      hess_f.block<10,10> (10*i,10*i) += Atdiff(10*i+j) * ddtheta_blocks[i](j); // Do not understand this, write the shapes of the block
     }
+    
+    }
+
+    // hess_f+lamda*dtheta*dtheta.T+ lamda*phi_del*ddtheta;
+
+    // Ridge Gauss-Newton: λ · dtheta_fullᵀ · dtheta_full
+  hess_f += lambda_ridge * dtheta_full.transpose() * dtheta_full;
+
+  // Ridge second-order correction: λ · Σⱼ (φ-φ_orig)[j] · ddθ_j
+  const VecX phi_diff = phi - phi_original;
+  for (int b = 0; b < nv; b++) {
+      for (Index j = 0; j < 10; j++) {
+          hess_f.block<10, 10>(10 * b, 10 * b) +=
+              lambda_ridge * phi_diff(10 * b + j) * ddtheta_blocks[b](j); // Do not understand this, review this
+      }
   }
 
   return true;
@@ -271,7 +325,8 @@ void EndEffectorParametersIdentification::finalize_solution(
   Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value,
                                ip_data, ip_cq);
 
-  theta_solution = z_to_theta(solution); 
+  for (int i=0; i<modelPtr_->nv; i++){
+    theta_solution.segment<10>(10*i) = z_to_theta(solution.segment<10>(10*i)); // solution is in theta 
 }
 
 Eigen::Vector<double, 10>
