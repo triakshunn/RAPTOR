@@ -14,7 +14,8 @@ namespace RAPTOR {
 
 bool EndEffectorParametersIdentificationMomentum::set_parameters(
     const Model& model_input,
-    const VecXd offset_input
+    const VecXd offset_input,
+    const double lambda_ridge_input
 )
 { 
     enable_hessian = true;
@@ -40,7 +41,8 @@ bool EndEffectorParametersIdentificationMomentum::set_parameters(
     }
 
     // simply give 0 as initial guess
-    x0 = VecXd::Zero(10); // 30???
+    lambda_ridge=lambda_ridge_input; 
+    x0 = VecXd::Zero(10 * modelPtr_->nv); // 30???
 
     return true;
 }
@@ -183,14 +185,30 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
 ) {
     Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value, ip_data, ip_cq); // cost is being made. 
 
-    theta_solution = z_to_theta(solution); // only defined for 10 params not 30 // returns the transformation so this is the answer then, and the below code is just for uncertainity estimation. 
-
+    theta_solution.resize(n); // again why we need it? Not done in non momentum version. 
+    for (int i=0; i<modelPtr_->nv; i++){
+    theta_solution.segment<10>(10*i) = z_to_theta(solution.segment<10>(10*i)); // solution is in theta 
+}
+    
+    // theta_solution = z_to_theta(solution); // only defined for 10 params not 30 // returns the transformation so this is the answer then, and the below code is just for uncertainity estimation. 
+    const int nv=modelPtr_->nv;
     std::cout << "Performing error analysis" << std::endl;
 
+    
     MatXd A(modelPtr_->nv * total_num_segments, 10 * modelPtr_->nv);
     VecXd b(modelPtr_->nv * total_num_segments);
     A.setZero();
     b.setZero();
+    std::vector<Mat10d> dtheta_blocks(nv);
+    // Build block-diagonal dtheta_full (n × n)
+    std::vector<Eigen::Array<Mat10d, 1, 10>> ddtheta_blocks(nv);
+    for (int i=0; i<nv; i++){
+    phi.segment<10>(10*i)=dd_z_to_theta(solution.segment<10>(10*i),dtheta_blocks[i], ddtheta_blocks[i]);
+  } // need to build this before implementing dtheta_full block
+    MatX dtheta_full = MatX::Zero(n, n);
+    for (int k = 0; k < nv; k++) {
+        dtheta_full.block<10, 10>(10 * k, 10 * k) = dtheta_blocks[k];
+    }
     Index row_start = 0;
     for (Index i = 0; i < Aseg.size(); i++) {
         const MatX& Aseg_i = Aseg[i];
@@ -200,27 +218,44 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
         row_start += Aseg_i.rows();
     }
 
-    const MatXd& A_opt = A.rightCols(10); // should be all A_opt?? 
+    // const MatXd& A = A; // should be all A?? 
     const VecXd b_opt = b - A * phi_original;
 
-    Mat10d dtheta;
-    Eigen::Array<Mat10d, 1, 10> ddtheta;
-    phi.tail(10) = dd_z_to_theta(solution, dtheta, ddtheta); // entire phi here no? defined for 10 params only. also diff between phi and theta here. 
-    VecXd diff = A * phi - b;
 
-    MatXd temp1 = A_opt * dtheta;
-    MatXd temp2 = diff.transpose() * A_opt;
-    Mat10d temp3 = temp1.transpose() * temp1;
-    Mat10d temp4;
-    temp4.setZero();
-    for (Index i = 0; i < 10; i++) {
-        temp4 += temp2(i) * ddtheta(i);
-    } 
-    Mat10d p_z_p_eta = temp3 + temp4;
+    // Mat10d dtheta;
+    // Eigen::Array<Mat10d, 1, 10> ddtheta;
+    //phi.tail(10) = dd_z_to_theta(solution, dtheta, ddtheta); // entire phi here no? defined for 10 params only. also diff between phi and theta here. 
+    VecXd diff = A * phi - b;
+    VecXd AtDiff = A.transpose() * diff;
+    MatXd temp1 = A * dtheta_full;
+    // MatXd temp2 = diff.transpose() * A;
+    // Mat10d temp3 = temp1.transpose() * temp1;
+    // Mat10d temp4;
+    // temp4.setZero();
+    // for (Index i = 0; i < 10; i++) {
+    //     temp4 += temp2(i) * ddtheta(i);
+    // } //need to rewrite this ig
+    // Mat10d p_z_p_eta = temp3 + temp4;
+    MatXd p_z_p_eta = temp1.transpose() * temp1;
+     for (int bk = 0; bk < nv; bk++) {
+         for (int j = 0; j < 10; j++) {
+             p_z_p_eta.block<10,10>(10*bk, 10*bk) += AtDiff(10*bk+j) * ddtheta_blocks[bk](j); // rewriting the above commented logic. 
+         }
+     }
+    
+    p_z_p_eta += lambda_ridge * dtheta_full.transpose() * dtheta_full; // logic? [TODO: Need to understand this]
+
+    VecXd phi_diff = phi - phi_original;
+      for (int bk = 0; bk < nv; bk++) {
+         for (int j = 0; j < 10; j++) {
+          p_z_p_eta.block<10,10>(10*bk, 10*bk) += lambda_ridge * phi_diff(10*bk+j) * ddtheta_blocks[bk](j);
+         }
+     } // logic?? [TODO: Need to understand this]
+
     Eigen::LDLT<MatXd> ldlt(p_z_p_eta);
-    Mat10d p_z_p_eta_inv;
+    MatXd p_z_p_eta_inv;
     if (ldlt.info() == Eigen::Success) {
-        p_z_p_eta_inv = ldlt.solve(Mat10d::Identity());
+        p_z_p_eta_inv = ldlt.solve(MatXd::Identity(n,n));
         // std::cout << dtheta * p_z_p_eta_inv << std::endl;
     }
     else {
@@ -228,10 +263,10 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
         THROW_EXCEPTION(IpoptException, "*** Chelosky decomposition not successful!");
     }
 
-    theta_uncertainty.setZero();
-    Vec10d p_z_p_x;
-    Vec10d p_eta_p_x;
-    Vec10d p_theta_p_x;
+    theta_uncertainty=VecXd::Zero(n);
+    VecXd p_z_p_x;
+    VecXd p_eta_p_x;
+    VecXd p_theta_p_x;
 
     // compute p_b_p_x for each of the x
     // (1) applied torque data: num_segment * H * modelPtr_->nv
@@ -247,9 +282,9 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
                 double dt = trajPtr_->tspan(j + 1) - trajPtr_->tspan(j);
                 for (Index k = 0; k < modelPtr_->nv; k++) {
                     // p_b_p_x = dt;
-                    p_z_p_x = -dt * temp1.row((pivot + s) * modelPtr_->nv + k);
+                    p_z_p_x = (-dt * temp1.row((pivot + s) * modelPtr_->nv + k)).transpose();
                     p_eta_p_x = -p_z_p_eta_inv * p_z_p_x;
-                    p_theta_p_x = dtheta * p_eta_p_x;
+                    p_theta_p_x = dtheta_full * p_eta_p_x;
                     double torque_error = 0.0;
                     if (sensor_noise.acceleration_error_type == SensorNoiseInfo::SensorNoiseType::Ratio) {
                         torque_error = std::abs(trajPtr_->q_dd(j)(k) * sensor_noise.acceleration_error(k));
@@ -277,25 +312,25 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
                 for (Index k = 0; k < modelPtr_->nv; k++) {
                     // friction
                     // p_b_p_x = dt * Utils::sign(trajPtr_->q_d(j)(k));
-                    p_z_p_x = -dt * Utils::sign(trajPtr_->q_d(j)(k)) * temp1.row((pivot + s) * modelPtr_->nv + k);
+                    p_z_p_x = (-dt * Utils::sign(trajPtr_->q_d(j)(k)) * temp1.row((pivot + s) * modelPtr_->nv + k)).transpose();
                     p_eta_p_x = -p_z_p_eta_inv * p_z_p_x;
-                    p_theta_p_x = dtheta * p_eta_p_x;
+                    p_theta_p_x = dtheta_full * p_eta_p_x;
                     double friction_parameter_error = std::abs(0.05 * modelPtr_->friction(k));
                     theta_uncertainty += p_theta_p_x.cwiseAbs() * friction_parameter_error;
 
                     // damping
                     // p_b_p_x = dt * trajPtr_->q_d(j)(k);
-                    p_z_p_x = -dt * trajPtr_->q_d(j)(k) * temp1.row((pivot + s) * modelPtr_->nv + k);
+                    p_z_p_x =( -dt * trajPtr_->q_d(j)(k) * temp1.row((pivot + s) * modelPtr_->nv + k)).transpose();
                     p_eta_p_x = -p_z_p_eta_inv * p_z_p_x;
-                    p_theta_p_x = dtheta * p_eta_p_x;
+                    p_theta_p_x = dtheta_full * p_eta_p_x;
                     double damping_parameter_error = std::abs(0.05 * modelPtr_->damping(k));
                     theta_uncertainty += p_theta_p_x.cwiseAbs() * damping_parameter_error;
 
                     // offset
                     // p_b_p_x = dt;
-                    p_z_p_x = -dt * temp1.row((pivot + s) * modelPtr_->nv + k);
+                    p_z_p_x = (-dt * temp1.row((pivot + s) * modelPtr_->nv + k)).transpose();
                     p_eta_p_x = -p_z_p_eta_inv * p_z_p_x;
-                    p_theta_p_x = dtheta * p_eta_p_x;
+                    p_theta_p_x = dtheta_full * p_eta_p_x;
                     double offset_error = std::abs(0.05 * offset(k));
                     theta_uncertainty += p_theta_p_x.cwiseAbs() * offset_error;
                 }
@@ -304,12 +339,13 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
         pivot += num_segment;
     }
 
-    // (3) other link inertial parameters: 10 * (modelPtr_->nv - 1)
-    MatXd p_b_p_x = -A.leftCols(10 * (modelPtr_->nv - 1));
-    MatXd p_z_p_x_2 = -p_b_p_x.transpose() * temp1;
-    MatXd p_eta_p_x_2 = -p_z_p_eta_inv * p_z_p_x_2.transpose();
-    MatXd p_theta_p_x_2 = dtheta * p_eta_p_x_2;
-    theta_uncertainty += p_theta_p_x_2.cwiseAbs() * phi_original.head(10 * (modelPtr_->nv - 1)).cwiseAbs() * 0.05;
+    // not needed for full inertial parameter estimation
+    // // (3) other link inertial parameters: 10 * (modelPtr_->nv - 1)
+    // MatXd p_b_p_x = -A.leftCols(10 * (modelPtr_->nv - 1));
+    // MatXd p_z_p_x_2 = -p_b_p_x.transpose() * temp1;
+    // MatXd p_eta_p_x_2 = -p_z_p_eta_inv * p_z_p_x_2.transpose();
+    // MatXd p_theta_p_x_2 = dtheta * p_eta_p_x_2;
+    // theta_uncertainty += p_theta_p_x_2.cwiseAbs() * phi_original.head(10 * (modelPtr_->nv - 1)).cwiseAbs() * 0.05;
 
     std::cout << "Uncertainty on the estimated end-effector inertial parameters: " << theta_uncertainty.transpose() << std::endl;
 }

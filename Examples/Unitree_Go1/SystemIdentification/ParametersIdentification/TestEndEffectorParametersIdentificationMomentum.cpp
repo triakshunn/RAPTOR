@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
 
   std::cout << "solution: " << mynlp->solution.transpose() << std::endl;
   std::cout << "parameter solution: "
-            << mynlp->z_to_theta(mynlp->solution).transpose() << std::endl;
+            << mynlp->theta_solution.transpose() << std::endl;
   std::cout << "groundtruth: " << mynlp->phi_original.transpose()
             << std::endl;
 

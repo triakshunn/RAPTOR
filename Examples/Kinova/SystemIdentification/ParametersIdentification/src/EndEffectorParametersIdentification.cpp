@@ -15,7 +15,7 @@ namespace RAPTOR {
 /// The parameters are given as 𝑣=[𝑚,𝑚𝑐𝑥,𝑚𝑐𝑦,𝑚𝑐𝑧,𝐼𝑥𝑥,𝐼𝑥𝑦,𝐼𝑦𝑦,𝐼𝑥𝑧,𝐼𝑦𝑧,𝐼𝑧𝑧]𝑇 ////
 
 bool EndEffectorParametersIdentification::set_parameters(
-    const Model &model_input, const VecX offset_input) {
+    const Model &model_input, const VecX offset_input, const double lambda_ridge_input) {
   enable_hessian = true;
 
   // parse the robot model

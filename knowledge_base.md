@@ -1064,7 +1064,7 @@ const double tol = 1e-6 * sigmaMax;
 size_t rankIdx = lastRow;
 while (rankIdx > 0 && singularValues(rankIdx) < tol) { rankIdx--; }
 const double &sigmaMin = singularValues(rankIdx); // sigma[16] = 0.0194 for 30-col
-
+```
 ## Why Certain Regressor Columns Are Structurally Zero
 
 When examining the 30-column regressor debug output, several columns are identically zero for all timesteps. These are not numerical artifacts — each has a precise geometric reason.

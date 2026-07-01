@@ -26,7 +26,8 @@ public:
     // [set_parameters]
     bool set_parameters(
         const Model& model_input,
-        const VecXd offset_input = VecXd::Zero(0)
+        const VecXd offset_input = VecXd::Zero(0),
+        const double lambda_ridge_input= 1e-6
     );
 
     // [add_trajectory_file]
@@ -93,7 +94,7 @@ public:
     int H = 100;
 
         // results
-    Vec10d theta_uncertainty;
+    VecXd theta_uncertainty;
 };
 
 }; // namespace RAPTOR

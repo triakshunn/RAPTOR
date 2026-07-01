@@ -6,7 +6,7 @@ using namespace RAPTOR;
 
 int main(int argc, char* argv[]) {
     // Load the robot model
-    const std::string urdf_filename  = "../Robots/kinova-gen3/gen3_2f85_fixed.urdf";
+    const std::string urdf_filename  = "../Robots/unitree-go1/go1_FR.urdf";
 
     pinocchio::Model model;
     pinocchio::urdf::buildModel(urdf_filename, model);
@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
         // to compute the acceleration and then the torque
     std::shared_ptr<BezierCurves> test_trajectory = std::make_shared<BezierCurves>(
         T, N, model.nv, TimeDiscretization::Uniform, 3);
-    test_trajectory->compute(Eigen::VectorXd::Random(test_trajectory->varLength), false);
+    test_trajectory->compute(Eigen::VectorXd::Random(test_trajectory->varLength), false); // not used by us??? 
 
         // to store the position, velocity and torque data for system identification
     std::shared_ptr<TrajectoryData> trajectory_data = std::make_shared<TrajectoryData>(
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     try {
         auto start = std::chrono::high_resolution_clock::now();
 	    mynlp->set_parameters(model,
-                              offset);
+                              offset, 1e-6);
         mynlp->add_trajectory_file(trajectory_data,
                                   acceleration);
         auto end = std::chrono::high_resolution_clock::now();
@@ -111,8 +111,8 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "solution: " << mynlp->solution.transpose()<< std::endl;
-    std::cout << "parameter solution: " << mynlp->z_to_theta(mynlp->solution).transpose() << std::endl;
-    std::cout << "groundtruth: " << mynlp->phi_original.tail(10).transpose() << std::endl;
+    std::cout << "parameter solution: " << mynlp->theta_solution.transpose() << std::endl;
+    std::cout << "groundtruth: " << mynlp->phi_original.transpose() << std::endl;
 
     return 0;
 }

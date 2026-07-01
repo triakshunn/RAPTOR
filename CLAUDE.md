@@ -6,6 +6,9 @@
 > - Do not run terminal commands that execute or modify code without explicit user permission.
 > - **Coding workflow**: Claude (Sonnet) discusses the design and writes high-level logic/annotated pseudocode in the chat. The user then prompts **Haiku** to implement the actual code from Claude's spec. Claude = architect + reviewer; Haiku = implementer.
 > You only have permission to do changes in knowledge_base.md which is our knowledge_base as we keep on working on project. 
+> When giving code changes, give code changes in format (- for lines to delete, + for lines to add) only, dont give other code gunk.
+> When giving code changes in - / + diff format, use ```diff fenced code blocks so deletions render red and additions render green. Just dont give + and - sign, creates issue wh
+> copying, give red and green to differentiate
 
 # Additional coding guidelines
 ## 1. Think Before Coding

@@ -14,7 +14,8 @@ namespace RAPTOR {
 
 bool EndEffectorParametersIdentificationMomentum::set_parameters(
     const Model& model_input,
-    const VecXd offset_input
+    const VecXd offset_input,
+    const double lambda_ridge_input
 )
 { 
     enable_hessian = true;

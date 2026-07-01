@@ -17,7 +17,7 @@ namespace RAPTOR {
 
 
 bool EndEffectorParametersIdentification::set_parameters(
-    const Model &model_input, const VecX offset_input) {
+    const Model &model_input, const VecX offset_input, const double lambda_ridge_input) {
   enable_hessian = true;
 
   // parse the robot model
@@ -196,7 +196,7 @@ bool EndEffectorParametersIdentification::eval_f(Index n, const Number *x,
 
   VecX z = Utils::initializeEigenVectorFromArray(x, n); // (timesteps*number_of_joints)*(10*number_of_joints)
   
-  const nv= modelPtr_->nv
+  const int nv= modelPtr_->nv; 
   for(int k=0; k<nv; k++ ){
     phi.segment<10>(10*k)=z_to_theta(z.segment<10>(10*k)); // iterate through all phi columns
   }
@@ -206,8 +206,9 @@ bool EndEffectorParametersIdentification::eval_f(Index n, const Number *x,
   obj_value = 0;
   for (Index i = 0; i < Aseg.size(); i++) {
     const VecX diff = Aseg[i] * phi - bseg[i]; // residual
-    obj_value += 0.5 * diff.dot(diff) + (lambda_ridge * (phi-phi_original).squaredNorm()) // added the normalization term. (Possible ToDo direction: only subtract for unidentifiable columns)
+    obj_value += 0.5 * diff.dot(diff);   // added the normalization term. (Possible ToDo direction: only subtract for unidentifiable columns)
   }
+  obj_value+=0.5*(lambda_ridge * (phi-phi_original).squaredNorm()); 
 
   update_minimal_cost_solution(n, z, new_x, obj_value); // function to assign z and obj_value in the optimizer solution. 
 
@@ -222,11 +223,11 @@ bool EndEffectorParametersIdentification::eval_grad_f(Index n, const Number *x,
                     "*** Error wrong value of n in eval_grad_f!");
   }
 
-  const nv= modelPtr_->nv
+  const int nv= modelPtr_->nv; 
 
   VecX z = Utils::initializeEigenVectorFromArray(x, n);
-  Mat10 dtheta; // (10*10)
-  std::vector<Mat10> dtheta_blocks(nv) // 3*10*10
+  Mat10 dtheta; // (10*10) (Not used)
+  std::vector<Mat10> dtheta_blocks(nv);  // 3*10*10
 
   for(int k=0; k<nv; k++ ){
     phi.segment<10>(10*k)=d_z_to_theta(z.segment<10>(10*k), dtheta_blocks[k]); // iterate through all phi columns
@@ -238,7 +239,7 @@ bool EndEffectorParametersIdentification::eval_grad_f(Index n, const Number *x,
     const VecX diff = Aseg[i] * phi - bseg[i];
     VecX Atdiff = Aseg[i].transpose() * diff;   // 30-vector
     for (int k=0; k<nv; k++){
-      grad_f_vec.segment<10>(10*k) += dtheta_blocks[k].transpose()*Atdiff.segment<10>(10*k)
+      grad_f_vec.segment<10>(10*k) += dtheta_blocks[k].transpose()*Atdiff.segment<10>(10*k); 
     }
   }
 
@@ -269,12 +270,12 @@ bool EndEffectorParametersIdentification::eval_hess_f(Index n, const Number *x,
   VecX z = Utils::initializeEigenVectorFromArray(x, n);
   Mat10 dtheta;
   Eigen::Array<Mat10, 1, 10> ddtheta;
-  const nv= modelPtr_->nv
+  const int nv= modelPtr_->nv; 
   std::vector<Mat10> dtheta_blocks(nv);
   std::vector<Eigen::Array<Mat10, 1, 10>> ddtheta_blocks(nv);
   
   for (int i=0; i<nv; i++){
-    phi.segment<10>(10*i)=dd_z_to_theta(z.segment<10>(10*i),dtheta_blocks[k], ddtheta_blocks[k]);
+    phi.segment<10>(10*i)=dd_z_to_theta(z.segment<10>(10*i),dtheta_blocks[i], ddtheta_blocks[i]);
   }
 
   // Build block-diagonal dtheta_full (n × n)
@@ -293,9 +294,9 @@ bool EndEffectorParametersIdentification::eval_hess_f(Index n, const Number *x,
     
     const VecX Atdiff=Aseg[i].transpose()*diff;
     // MatX temp2 = diff.transpose() * Aseg[i].rightCols(10); // 30*(T*3) * (T*3)*30 == 30*30
-    for (int i=0; i<nv; i++){
+    for (int b=0; b<nv; b++){
       for (Index j = 0; j < n; j++) // n=10*model.nv
-      hess_f.block<10,10> (10*i,10*i) += Atdiff(10*i+j) * ddtheta_blocks[i](j); // Do not understand this, write the shapes of the block
+      hess_f.block<10,10> (10*b,10*b) += Atdiff(10*b+j) * ddtheta_blocks[b](j); // Do not understand this, write the shapes of the block
     }
     
     }
@@ -325,9 +326,11 @@ void EndEffectorParametersIdentification::finalize_solution(
   Optimizer::finalize_solution(status, n, x, z_L, z_U, m, g, lambda, obj_value,
                                ip_data, ip_cq);
 
+  theta_solution.resize(n); // again why we doing this?
+
   for (int i=0; i<modelPtr_->nv; i++){
     theta_solution.segment<10>(10*i) = z_to_theta(solution.segment<10>(10*i)); // solution is in theta 
-}
+}}
 
 Eigen::Vector<double, 10>
 EndEffectorParametersIdentification::z_to_theta(const VecX &z) {

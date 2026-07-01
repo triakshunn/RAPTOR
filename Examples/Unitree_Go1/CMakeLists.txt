@@ -51,6 +51,44 @@ target_link_libraries(Go1_SysidFriction_test PUBLIC
 target_compile_options(Go1_SysidFriction_test PUBLIC
     ${PINOCCHIO_FLAGS})
 
+
+add_executable(Go1_SysidInertial_test
+    SystemIdentification/ParametersIdentification/TestEndEffectorParametersIdentification.cpp)
+target_include_directories(Go1_SysidInertial_test PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include)
+target_link_libraries(Go1_SysidInertial_test PUBLIC
+    trajlib
+    IDlib
+    Conslib
+    Optlib
+    Go1lib
+    ipopt
+    coinhsl
+    ${Boost_LIBRARIES}
+    pinocchio::pinocchio)
+target_compile_options(Go1_SysidInertial_test PUBLIC
+    ${PINOCCHIO_FLAGS})
+
+add_executable(Go1_SysidInertialMomentum_test
+    SystemIdentification/ParametersIdentification/TestEndEffectorParametersIdentificationMomentum.cpp)
+target_include_directories(Go1_SysidInertialMomentum_test PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
+    ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include)
+target_link_libraries(Go1_SysidInertialMomentum_test PUBLIC
+    trajlib
+    IDlib
+    Conslib
+    Optlib
+    Go1lib
+    ipopt
+    coinhsl
+    ${Boost_LIBRARIES}
+    pinocchio::pinocchio)
+target_compile_options(Go1_SysidInertialMomentum_test PUBLIC
+    ${PINOCCHIO_FLAGS})
+
+
 add_executable(Go1_exciting_traj
     SystemIdentification/ExcitingTrajectories/Go1_RegressorExample.cpp)
 target_include_directories(Go1_exciting_traj PUBLIC

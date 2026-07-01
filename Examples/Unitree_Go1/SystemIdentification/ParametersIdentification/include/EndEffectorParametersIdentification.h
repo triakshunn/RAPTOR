@@ -29,7 +29,8 @@ public:
     // [set_parameters]
     bool set_parameters(
         const Model& model_input,
-        const VecX offset_input = VecX::Zero(0)
+        const VecX offset_input = VecX::Zero(0),
+        const double lambda_ridge_input = 1e-6 
     );
 
     // [add_trajectory_file]
@@ -153,7 +154,10 @@ public:
     std::vector<VecX> bseg; // regression vector for each trajectory
 
         // results
-    Vec10 theta_solution;
+    VecX theta_solution; // size =10*nv
+
+        // ridge regressor parameter
+    double lambda_ridge = 0.0; 
 };
 
 }; // namespace RAPTOR
