@@ -56,7 +56,7 @@ Frequencies are incommensurate (no harmonic relationships) to prevent rank defic
 
 ```bash
 cd /workspaces/RAPTOR/build
-./Go1_SysidFriction_test 1    # "1" matches the *_1.csv file suffix
+./Go1_SysidFriction_test [leg] # Replace leg with either of [FR,FL,RL,RR]
 ```
 
 **Output** (`full_params_data/friction/FR/`):
@@ -82,6 +82,22 @@ FC_TRUE = [0.8, 0.8, 0.8]   # N·m
 FV_TRUE = [0.5, 0.5, 0.5]   # N·m·s/rad
 IA_TRUE = [0.03, 0.03, 0.03] # kg·m²
 ```
+Update the predicted values from the optimizer above in the following code block in `sysid_friction_comparison.py` :
+
+```python
+ Fc_estimated[0:3] = [0.50, 0.80, 0.60]   # Coulomb friction (N·m)
+    Fv_estimated[0:3] = [0.30, 0.50, 0.40]   # Viscous damping (N·m·s/rad)
+    Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+```
+
+Then run the comparison script to visualize IDC tracking with your estimated vs. true vs. noisy friction params:
+
+```bash
+cd Examples/Unitree_Go1/python
+python3 sysid_friction_comparison.py
+```
+
+This simulates the robot with three friction parameter sets (true / estimated / noisy) and plots position tracking and error for each joint. Good identification should show the estimated controller nearly matching the true IDC curve.
 
 Run all four legs by repeating Steps 1–2 with `--leg FL`, `--leg RR`, `--leg RL`.
 
