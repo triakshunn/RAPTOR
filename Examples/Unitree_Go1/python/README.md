@@ -10,7 +10,7 @@ Make sure you are inside the current folder (`RAPTOR/Examples/Kinova/python`) to
 ### Path to the URDF and the pybind program
 We assume that you are running everything inside the docker.
 That's why in these scripts, you will find that all the paths are defined globally inside the docker, starting with `/workspaces/RAPTOR/`.
-If you run the scripts without the docker, you will need to manually change the paths to all the URDFs and the pybind programs.
+If you run the scripts without the docker, you will need to manual◊ly change the paths to all the URDFs and the pybind programs.
 
 ### Other Notes
 In these scripts, we use PyBullet **only for visualization**.
@@ -121,7 +121,7 @@ More information can be found at the [README](../Armour/README.md) in `Armour` f
 
 ### Common Ipopt Parameters
 
-| Parameters           | Description                                                                                     |
+| Parameters           | ◊Description                                                                                     |
 |:---------------------|:------------------------------------------------------------------------------------------------|
 | tol                  | optimality tolerance |
 | constr_viol_tol      | constraint violation tolerance |
