@@ -109,48 +109,65 @@ def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
     print("✓ Joint limit safety verification passed.")
 
 
+def desired_trajectory_leg(t, leg_offset, nq, q_nominal):
+    """Excite all 3 joints of one leg simultaneously. Replacement of desired_trajectory_friction."""
+    centers    = [0.0,  1.9,   -1.85]
+    amplitudes = [0.3,  0.4,    0.5]
+    freqs      = [0.5,  1.0,    1.5]       # Hz — incommensurate to avoid rank deficiency
+    phases     = [0.0,  np.pi/3, 2*np.pi/3]
 
-def desired_trajectory_friction(t, local_joint_idx):
-    """
-    Generate exciting trajectory for active_joint_idx while keeping others frozen.
-    Returns full vectors of size nq.
-    """
-    
-    # Center and amplitude parameters for the Go1 Front Right (FR) leg joints
-    # 0 = Hip, 1 = Thigh, 2 = Calf
-    centers = [0.1, 1.1, -2.5]
-    amplitudes = [0.8, 1.0, 0.2] ## changed from the original generated trajectory
-    
-    # Map the active joint to the 3-joint leg configuration
-    c = centers[local_joint_idx]
-    A = amplitudes[local_joint_idx]
-    
-    # Multi-frequency sinusoid to excite Coulomb (Fc), Viscous (Fv), and Armature (Ia)
-    qd_joint    = c + A * (0.5*np.sin(0.3*t) + 0.3*np.sin(3.0*t) + 0.1*np.sin(10.0*t))
-    qd_d_joint  = A * (0.5*0.3*np.cos(0.3*t) + 0.3*3.0*np.cos(3.0*t) + 0.1*10.0*np.cos(10.0*t))
-    qd_dd_joint = A * (-0.5*0.09*np.sin(0.3*t) - 0.3*9.0*np.sin(3.0*t) - 0.1*100.0*np.sin(10.0*t))
-    
-    return qd_joint, qd_d_joint, qd_dd_joint
-
-def desired_trajectory_full(t, active_joint_idx, nq, q_nominal):
-    """
-    Computes desired joint positions, velocities, and accelerations for all nq joints.
-    Only the active_joint_idx joint executes the exciting sinusoidal trajectory.
-    All other joints remain frozen at their corresponding values in q_nominal.
-    """
-    qd = np.copy(q_nominal)
-    qd_d = np.zeros(nq)
-    qd_dd = np.zeros(nq)    
-    
-    # Get the sinusoidal trajectory for the active joint
-    # (using local_idx = active_joint_idx % 3 to map to Go1 leg joint configs)
-    qd_active, qd_d_active, qd_dd_active = desired_trajectory_friction(t, active_joint_idx % 3)
-
-    qd[active_joint_idx] = qd_active
-    qd_d[active_joint_idx] = qd_d_active
-    qd_dd[active_joint_idx] = qd_dd_active
-
+    qd    = np.copy(q_nominal)
+    qd_d  = np.zeros(nq)
+    qd_dd = np.zeros(nq)
+    for k in range(3):
+        w = 2 * np.pi * freqs[k]
+       qd[leg_offset + k]    = centers[k] + amplitudes[k] * np.sin(w * t + phases[k])
+        qd_d[leg_offset + k]  = amplitudes[k] * w * np.cos(w * t + phases[k])
+        qd_dd[leg_offset + k] = -amplitudes[k] * w**2 * np.sin(w * t + phases[k])
     return qd, qd_d, qd_dd
+
+
+# def desired_trajectory_friction(t, local_joint_idx):
+#     """
+#     Generate exciting trajectory for active_joint_idx while keeping others frozen.
+#     Returns full vectors of size nq.
+#     """
+    
+#     # Center and amplitude parameters for the Go1 Front Right (FR) leg joints
+#     # 0 = Hip, 1 = Thigh, 2 = Calf
+#     centers = [0.1, 1.1, -2.5]
+#     amplitudes = [0.8, 1.0, 0.2] ## changed from the original generated trajectory
+    
+#     # Map the active joint to the 3-joint leg configuration
+#     c = centers[local_joint_idx]
+#     A = amplitudes[local_joint_idx]
+    
+#     # Multi-frequency sinusoid to excite Coulomb (Fc), Viscous (Fv), and Armature (Ia)
+#     qd_joint    = c + A * (0.5*np.sin(0.3*t) + 0.3*np.sin(3.0*t) + 0.1*np.sin(10.0*t))
+#     qd_d_joint  = A * (0.5*0.3*np.cos(0.3*t) + 0.3*3.0*np.cos(3.0*t) + 0.1*10.0*np.cos(10.0*t))
+#     qd_dd_joint = A * (-0.5*0.09*np.sin(0.3*t) - 0.3*9.0*np.sin(3.0*t) - 0.1*100.0*np.sin(10.0*t))
+    
+#     return qd_joint, qd_d_joint, qd_dd_joint
+
+# def desired_trajectory_full(t, active_joint_idx, nq, q_nominal):
+#     """
+#     Computes desired joint positions, velocities, and accelerations for all nq joints.
+#     Only the active_joint_idx joint executes the exciting sinusoidal trajectory.
+#     All other joints remain frozen at their corresponding values in q_nominal.
+#     """
+#     qd = np.copy(q_nominal)
+#     qd_d = np.zeros(nq)
+#     qd_dd = np.zeros(nq)    
+    
+#     # Get the sinusoidal trajectory for the active joint
+#     # (using local_idx = active_joint_idx % 3 to map to Go1 leg joint configs)
+#     qd_active, qd_d_active, qd_dd_active = desired_trajectory_friction(t, active_joint_idx % 3)
+
+#     qd[active_joint_idx] = qd_active
+#     qd_d[active_joint_idx] = qd_d_active
+#     qd_dd[active_joint_idx] = qd_dd_active
+
+#     return qd, qd_d, qd_dd
 
 # def controller(q, v, qd, qd_d, qd_dd):
 #     """
@@ -286,7 +303,7 @@ def butterworth_lowpass_filter(data, cutoff, fs, order=4):
           frequency (Nyquist frequency) to avoid aliasing.
     """
     b, a = butter(order, cutoff, btype='low', analog=False, fs = fs)
-    data_filtered = data
+    data_filtered = data.copy()
     
     for i in range(data.shape[1]):
         data_filtered[:, i] = filtfilt(b, a, data[:, i])
