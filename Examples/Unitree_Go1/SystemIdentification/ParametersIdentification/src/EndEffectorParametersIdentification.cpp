@@ -295,7 +295,7 @@ bool EndEffectorParametersIdentification::eval_hess_f(Index n, const Number *x,
     const VecX Atdiff=Aseg[i].transpose()*diff;
     // MatX temp2 = diff.transpose() * Aseg[i].rightCols(10); // 30*(T*3) * (T*3)*30 == 30*30
     for (int b=0; b<nv; b++){
-      for (Index j = 0; j < n; j++) // n=10*model.nv
+      for (Index j = 0; j < 10; j++) // n=10*model.nv
       hess_f.block<10,10> (10*b,10*b) += Atdiff(10*b+j) * ddtheta_blocks[b](j); // Do not understand this, write the shapes of the block
     }
     

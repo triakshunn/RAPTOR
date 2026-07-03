@@ -26,8 +26,8 @@ public:
     // [set_parameters]
     bool set_parameters(
         const Model& model_input,
-        const VecXd offset_input = VecXd::Zero(0),
-        const double lambda_ridge_input= 1e-6
+        const VecXd offset_input = VecXd::Zero(0), 
+        const double lambda_ridge_input= 1e-3
     );
 
     // [add_trajectory_file]

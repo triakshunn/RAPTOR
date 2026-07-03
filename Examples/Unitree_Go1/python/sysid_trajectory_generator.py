@@ -402,10 +402,10 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     if args.mode == 'inertial':
-        np.savetxt(out_dir + f"q_downsampled_{args.run}.csv",   qs_out,   delimiter=" ")
-        np.savetxt(out_dir + f"q_d_downsampled_{args.run}.csv",  vs_out,   delimiter=" ")
-        np.savetxt(out_dir + f"q_dd_downsampled_{args.run}.csv", accs_out, delimiter=" ")
-        np.savetxt(out_dir + f"tau_downsampled_{args.run}.csv",  taus_out, delimiter=" ")
+        traj_data = np.column_stack([ts_out, qs_out, vs_out, taus_out])
+        np.savetxt(os.path.join(out_dir, "traj_data.csv"),    traj_data, delimiter=" ")
+        np.savetxt(os.path.join(out_dir, "acceleration.csv"), accs_out,  delimiter=" ")
+        print(f"Saved to: {out_dir}")
     
     else:
         np.savetxt(os.path.join(out_dir, "q_downsampled.csv"),    qs_out,   delimiter=" ")

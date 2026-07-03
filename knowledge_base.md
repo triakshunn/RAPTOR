@@ -295,6 +295,8 @@ This uses the regressor classes in [KinematicsDynamics/](file:///Users/akshunn/R
 
 ### 6.2 Phase 1 — Data Generation (Python Simulation)
 
+> ✅ **COMPLETE** — Friction simulation data generated using `sysid_trajectory_generator.py --mode friction --leg FR` (per-leg URDF `go1_FR.urdf`, nv=3, all 3 joints excited simultaneously). Output at `full_params_data/friction/FR/` — 4 CSVs × 3 columns. Skip to §6.3.
+
 **Script**: `test_friction_sysid_go1.py` (new file in `Examples/Unitree-Go1/python/`)
 
 **Architecture**: Replicate `test_sysid_inverse_dynamics.py` structure with these key modifications:
@@ -330,46 +332,7 @@ def desired_trajectory_friction(t, joint_idx):
     return qd, qd_d, qd_dd
 ```
 
-#### 6.2.2 Freezing Joints (The Core Technique)
-
-**How to make only one joint move while others stay fixed:**
-
-For the **full 12-DOF model**, set the desired trajectory to a constant (nominal) value for all 11 non-target joints. The PD controller will hold them in place:
-
-```python
-def desired_trajectory_full(t, active_joint_idx):
-    """
-    Returns desired (q, qd, qdd) for ALL 12 joints.
-    Only active_joint_idx gets a sinusoidal trajectory.
-    All others get a constant hold position.
-    """
-    nv = 12  # full Go1 model
-    qd    = np.array(q_nominal)  # all joints at nominal stand pose
-    qd_d  = np.zeros(nv)
-    qd_dd = np.zeros(nv)
-    
-    # Only the active joint gets the exciting trajectory
-    qd[active_joint_idx], qd_d[active_joint_idx], qd_dd[active_joint_idx] = \
-        desired_trajectory_friction(t, active_joint_idx % 3)
-    
-    return qd, qd_d, qd_dd
-```
-
-**PD gains for frozen joints should be HIGH** (stiff hold), active joint PD gains should be moderate (allows some tracking error, which is fine for data generation):
-
-```python
-def controller(q, v, qd, qd_d, qd_dd, active_joint_idx):
-    kp = np.ones(nv) * 500.0   # high stiffness for frozen joints
-    kd = np.ones(nv) * 50.0
-    
-    kp[active_joint_idx] = 200.0  # moderate for active joint
-    kd[active_joint_idx] = 20.0
-    
-    tau = kp * (qd - q) + kd * (qd_d - v)
-    return tau
-```
-
-#### 6.2.3 Forward Simulation with Friction
+#### 6.2.2 Forward Simulation with Friction
 
 **Critical**: `pin.aba()` does NOT model friction. You must add it manually in the dynamics:
 
@@ -387,7 +350,7 @@ def dynamics_with_friction(t, state, model, data, Fc_true, Fv_true, Ia_true):
     
     # ✅ [CHOSEN] Armature: set on model BEFORE calling ABA.
     # Pinocchio adds diag(Ia) to the joint-space inertia matrix natively.
-    # Do NOT manually subtract Ia*a — that is physically wrong.
+    # Do NOT manually subtract Ia*a — that is physically wrong
     model.armature = Ia_true
     
     a = pin.aba(model, data, q, v, tau_net)
@@ -437,8 +400,9 @@ np.savetxt(output_dir + "tau_downsampled_1.csv",   taus_ds, delimiter=" ")
 ### 6.3 Phase 2 — Friction ID (C++ Solver)
 
 > [!IMPORTANT]
-> **Phase 2 is the next step.** Phase 1 (Python simulation + CSV generation) is ✅ COMPLETE.
-> The CSVs are on disk. The C++ solver just needs to be built and run.
+> ✅ Phase 1 COMPLETE — friction CSVs in `full_params_data/friction/FR/` (3-col, nv=3).
+> ✅ `TestFrictionParametersIdentification.cpp` updated for per-leg (separate branch — **merge before running**).
+> Next: `make Go1_SysidFriction_test -j4` then `./Go1_SysidFriction_test FR`
 
 #### What the C++ solver does
 
@@ -510,22 +474,6 @@ The key methods each subclass **must** implement:
 > [!TIP]
 > The `Optimizer` base class provides default implementations for `eval_g`, `eval_jac_g`, `eval_h` that **delegate to subclass methods** `eval_f`, `eval_grad_f`, `eval_hess_f` and assemble the full Lagrangian Hessian. So the subclasses only need to provide objective-related callbacks.
 
----
-
-## 8. Where's the "Missing" Code?
-
-You noticed that the C++ pipeline doesn't have a single monolithic "run everything" file like `SysIDMain.m`. Here's where each piece lives:
-
-| MATLAB step | MATLAB file | C++ equivalent |
-|---|---|---|
-| Build robot model | `Go1Leg_model.m` | `pinocchio::urdf::buildModel(urdf_filename)` — **automatic from URDF** |
-| Build regressor | `RegressorClassical.m` + `regressor/*.m` | `pinocchio::computeJointTorqueRegressor()` or `RegressorInverseDynamics` class |
-| Data loading & filtering | `SysIDData.m` + `dataProcessing.m` | CSV loading via `Utils::initializeEigenMatrixFromFile()` — **filtering done offline** |
-| QR regrouping | `QRDecomposition.m` | **Not implemented** — RAPTOR uses a different approach (Log-Cholesky instead) |
-| Optimization | `SysIDAlgFull.m` via `fmincon` | `Optimizer` subclass + IPOPT via `app->OptimizeTNLP(mynlp)` |
-| Physical consistency | LMI constraints in fmincon | `z_to_theta()` reparameterization |
-| Exciting trajectory design | (not in ConstrainedSysID) | [ExcitingTrajectories/](file:///Users/akshunn/ROAHM%20Lab/RAPTOR/Examples/Kinova/SystemIdentification/ExcitingTrajectories/) — **bonus in C++** |
-
 
 ---
 
@@ -555,29 +503,23 @@ parameter solution: [Fc_0 .. Fc_11  Fv_0 .. Fv_11  Ia_0 .. Ia_11]
 
 **Output files written to:**
 ```
-Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/
-    friction_parameters_solution_1.csv    ← 36 values: [Fc(12), Fv(12), Ia(12)]
+Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/friction/joint/
+    friction_parameters_solution_1.csv    ← 12 values: [Fc(3), Fv(3), Ia(3)]
     friction_estimate_tau_1.csv           ← reconstructed torque (for validation plot)
 ```
 
 **To run for each joint:**
 ```bash
-./Go1_SysidFriction_test 0    # FR Hip
-./Go1_SysidFriction_test 1    # FR Thigh
-./Go1_SysidFriction_test 2    # FR Calf
+./Go1_SysidFriction_test FR 1   # FR Hip
 ```
 
 #### Sanity check after running
 Open `friction_parameters_solution_1.csv`. The values are laid out as:
 ```
-[Fc_j0, Fc_j1, ..., Fc_j11,   ← first 12 rows: Coulomb friction per joint
- Fv_j0, Fv_j1, ..., Fv_j11,   ← next 12 rows: viscous damping per joint
- Ia_j0, Ia_j1, ..., Ia_j11]   ← last 12 rows: armature inertia per joint
+[Fc_j0, Fc_j1, ..., Fc_j2,   ← first 3 rows: Coulomb friction per joint
+ Fv_j0, Fv_j1, ..., Fv_j2,   ← next 3 rows: viscous damping per joint
+ Ia_j0, Ia_j1, ..., Ia_j2]   ← last 3 rows: armature inertia per joint
 ```
-
-For `active_joint = 1`, expect:
-- `Fc_j1 ≈ 0.8`, `Fv_j1 ≈ 0.5`, `Ia_j1 ≈ 0.03` (matching `Fc_true[1], Fv_true[1], Ia_true[1]`)
-- All other joints' values ≈ 0 (they were frozen)
 
 ---
 
@@ -650,79 +592,10 @@ RMSE(B) ≈ RMSE(A)  (identified params ≈ true params → good tracking)
 
 If `RMSE(B) >> RMSE(A)`, the identification failed — go back and check data quality.
 
-
-#### 8.4.5 Phase 3 — Validation via IDC Tracking Comparison
-
-**Goal**: Show that identified friction parameters improve control performance.
-
-#### 8.4.5.1 Why IDC for Validation (Not PD)
-
-Simple PD: `τ = Kp·e + Kd·ė` → tracking quality depends on **gains**, not model quality. A lucky gain choice can mask bad parameters.
-
-IDC (Inverse Dynamics Control / Computed Torque):
-```
-τ = M̂(q)·(q̈_d + Kd·ė + Kp·e) + Ĉ(q,q̇)·q̇ + ĝ(q) + F̂c·sign(q̇) + F̂v·q̇
-         └─── PD on error ────┘    └──── model-based cancellation ──────────┘
-```
-
-If `M̂, Ĉ, ĝ, F̂c, F̂v` are perfect → tracking error converges to zero (linear dynamics).
-If `M̂, Ĉ, ĝ, F̂c, F̂v` are wrong → residual nonlinear dynamics → tracking error grows.
-
-**This directly exposes model quality.** The controller performance becomes a proxy for parameter accuracy.
-
-#### 8.4.2 Two Scenarios to Compare
-
-Simulate tracking a **NEW** sinusoidal trajectory (different frequencies from the one used for identification!) under two parameter sets:
-
-```
-Scenario A: IDC with true friction parameters (Fc_true, Fv_true, Ia_true)
-            → best possible tracking (perfect model)
-
-Scenario B: IDC with identified friction parameters from Phase 2 (Fc_estimated, Fv_estimated, Ia_estimated)
-            → should be close to A if the optimizer recovered good parameters
-```
-
-The "ground truth simulator" always uses the true parameters — the true model generates the actual robot states. The IDC controller uses whichever parameter set is being tested.
-
-#### 8.4.5.3 IDC Implementation
-
-```python
-def idc_controller(q, v, qd, qd_d, qd_dd, model_hat, data_hat, Fc_hat, Fv_hat):
-    """Inverse dynamics control using estimated model parameters."""
-    e = qd - q
-    e_d = qd_d - v
-    a_desired = qd_dd + Kd * e_d + Kp * e   # desired acceleration
-    
-    # Compute model-based feedforward using ESTIMATED model
-    tau_ff = pin.rnea(model_hat, data_hat, q, v, a_desired)
-    
-    # Add friction compensation using ESTIMATED friction
-    tau_friction_comp = Fc_hat * np.sign(v) + Fv_hat * v
-    
-    return tau_ff + tau_friction_comp
-```
-
-#### 8.4.5.4 Validation Metrics
-
-```python
-# For each scenario, compute:
-tracking_error = np.linalg.norm(q_actual - q_desired, axis=1)  # per timestep
-rmse = np.sqrt(np.mean(tracking_error**2))
-max_error = np.max(tracking_error)
-```
-TODO: 
-1. Implement the tracking error metric. 
+TODO:
+1. Implement the tracking error metric.
 2. Review the forward tracking pipeline.
-3. Run the optimization 5 times for every joint. Report the tracking error for this averaged data 
-and the reported friction parameters with the mean error and standard deviation. 
-
-Expected results:
-```
-RMSE(A) ≈ 0.001  (near-perfect, limited by Kp/Kd)
-RMSE(B) ≈ RMSE(A)  (identified params ≈ true params → good tracking)
-```
-
-If `RMSE(B) >> RMSE(A)`, the identification failed — go back and check data quality.
+3. Run the optimization 5 times for every joint. Report the tracking error for this averaged data and the reported friction parameters with the mean error and standard deviation.
 
 ## 9. C++ Best Practices:  Porting Kinova Example Modules to Unitree Go1
 
@@ -918,9 +791,6 @@ else:  # inertial
 # Output: 3-col CSVs (nv=3 — no inactive joints)
 ```
 
-> [!NOTE]
-> The existing `sysid_trajectory_generator.py` was written for the 12-DOF model with inactive joint management. It needs to be significantly refactored (or rewritten) to use the 3-DOF per-leg URDF. The old `--inactive`, `Q_PRONE`, `LEG_JOINTS` logic should all be removed.
-
 ---
 
 ### 11.6 CSV output format (both modes, nv=3)
@@ -942,16 +812,6 @@ The downstream C++ estimators (`FrictionParametersIdentification`, `EndEffectorP
 
 ### 11.9 Task 3 — Refactor `sysid_trajectory_generator.py`
 
-**File:** [`sysid_trajectory_generator.py`](file:///workspaces/raptor/Examples/Unitree_Go1/python/sysid_trajectory_generator.py)
-
-Changes needed:
-1. **Remove**: all 12-DOF model logic, `Q_PRONE`, `Q_STAND`, `LEG_JOINTS`, inactive joint PD control, `--inactive`, `--joint` flags
-2. **Add**: `--mode friction|inertial`, `--leg FR|FL|RR|RL`, `--run N`
-3. **Change**: model loaded from `go1_<leg>.urdf` (nv=3), not `go1.urdf`
-4. **Friction mode**: simultaneous sinusoidal excitation on all 3 joints with different frequencies/phases
-5. **Inertial mode**: load `exciting-trajectory-<run>.csv`, replay all 3 joints via PD
-6. **Output**: 3-col CSVs to `full_params_data/<mode>/<leg>/`
-
 ```bash
 # Friction SysID — all 3 joints of FR leg simultaneously:
 python3 sysid_trajectory_generator.py --mode friction --leg FR
@@ -962,40 +822,7 @@ python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
 
 ---
 
-### 11.10 Implementation Order
-
-```
-1. ✅ go1_FR/FL/RR/RL.urdf — split and verified (nv=3)
-
-2. ✅ Go1_RegressorExample.cpp — loads go1_<leg>.urdf, outputs 3-DOF trajectory
-   [ ] Fix bug: loop bound 12 → model.nv (lines 169–174)
-   [ ] Build: cd build && make Go1_exciting_traj -j4
-   [ ] Run:   mkdir -p data/FR && ./Go1_exciting_traj 1 FR
-   [ ] Verify: data/FR/exciting-trajectory-1.csv has 1000 rows × 13 cols
-
-3. [ ] Refactor sysid_trajectory_generator.py
-   [ ] Remove all 12-DOF inactive joint management and --joint flag
-   [ ] Add --mode friction|inertial, --leg, --run flags
-   [ ] Friction traj_fn: parallel sinusoid all 3 joints, different freqs/phases
-   [ ] Inertial traj_fn: load CSV, replay all 3 joints via PD
-   [ ] Output 3-col CSVs to full_params_data/<mode>/<leg>/
-
-4. [ ] Run friction simulation for FR leg
-   [ ] python3 sysid_trajectory_generator.py --mode friction --leg FR
-   [ ] Verify: full_params_data/friction/FR/ has 4 CSVs × 3 cols
-
-5. [ ] Run inertial simulation for FR leg
-   [ ] python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
-   [ ] Verify: full_params_data/inertial/FR/ has 4 CSVs × 3 cols
-
-6. [ ] Feed CSVs to FrictionParametersIdentification and EndEffectorParametersIdentification
-```
-
 ### 11.11 Open Questions
-
-1. **`phi.tail(10)` vs full leg**: `EndEffectorParametersIdentification` currently identifies only the last link's 10 params. For full 3-joint inertial ID, change to `phi.tail(30)` and `numVars = 30`. See Section 4. [Future Note: From my
-understanding, this will not lead to optimization working, will need to remove the columns to minimize conditioning num
-of regressor]
 
 2. **Hip identifiability**: Hip is a pure abduction joint. Its regressor rows may be poorly conditioned — may need higher amplitude or frequency for the hip DOF in the exciting trajectory.
 
@@ -1125,7 +952,7 @@ The 17 identifiable parameters are the **only ones that affect torque prediction
 
 ---
 
-## FEATURE (TODO): Full-Leg (30-param) Inertial ID + Tikhonov
+## FEATURE (DONE): Full-Leg (30-param) Inertial ID + Tikhonov
 
 Generalize `EndEffectorParametersIdentification` from last-link-only (tail-10) to the whole leg (30 params). **All changes live in the base class → momentum solver inherits them for free** (momentum does NOT override `z_to_theta`/`eval_*`/`get_nlp_info`).
 
@@ -1149,7 +976,6 @@ IPOPT moves  z  ──z_to_theta──►  θ (one link, 10)  ──stack──�
 30-col regressor is rank 17/30 (13 structural zeros, §12) → Hessian `H` singular → IPOPT undetermined in 13 dirs AND `LDLT` inversion blows up. `rankIdx`/SVD-skip does NOT transfer (that trick edits an SVD-metric cost; here cost is a *residual* that's flat, not blown-up — and ID must emit values for dead params, so a prior is mandatory). Column-drop fails because Log-Cholesky entangles z-coords. **Fix = add ridge to the cost** (one knob fixes IPOPT solve + LDLT + pins dead params to URDF):
 
 ```
-f(z) = ½ Σ_s‖A_s·φ(z) − b_s‖²  +  ½λ‖φ(z) − φ_orig‖²       (φ-space, physical)
 ```
 - grad: `[Σ diffᵀA + λ(φ−φ_orig)]·dtheta`
 - Hess: data-GN + data-curv + **`λ·dthetaᵀdtheta`** (the PD fixer, fills the 13 flat dirs) + `λ·Σ_j(φ−φ_orig)_j·ddtheta(j)`
@@ -1164,4 +990,95 @@ Generalizing `finalize_solution` uncertainty (tail-10→30): `A.rightCols(10)`�
 1. Validate plumbing+point estimates on **IIDD** (trivial `finalize_solution`, uses filtered q̈), full-30 + z-space ridge.
 2. Port to **momentum** for hardware-grade + uncertainty.
 Diagnostic: print column-norms/rank → confirm 17 identifiable match URDF tightly, 13 sit at URDF.
+
+---
+### 11.10 Implementation Order
+
+```
+1. ✅ go1_FR/FL/RR/RL.urdf — split and verified (nv=3)
+
+2. ✅ Go1_RegressorExample.cpp — adapted for per-leg URDF
+   [ ] Fix loop bound 12 → model.nv (lines 169–174)
+   [ ] Build: make Go1_exciting_traj -j4
+   [ ] Run:   mkdir -p data/FR && ./Go1_exciting_traj 1 FR
+   [ ] Verify: data/FR/exciting-trajectory-1.csv
+
+3. ✅ sysid_trajectory_generator.py — refactored for --mode friction|inertial --leg
+
+4. ✅ Friction data generated: full_params_data/friction/FR/ (4 CSVs × 3 cols)
+
+5. ✅ EndEffectorParametersIdentification.cpp — 30-param + Tikhonov ridge, all bugs fixed
+
+6. ✅ EndEffectorParametersIdentificationMomentum.cpp — all bugs fixed
+
+7. ✅ CMakeLists.txt — Go1_SysidInertial_test + Go1_SysidInertialMomentum_test added
+
+8. ✅ TestFrictionParametersIdentification.cpp — per-leg updates done (separate branch, merge before running)
+
+9. [ ] Update TestEndEffectorParametersIdentification.cpp
+       - Increase max_wall_time: 1.0 → 30.0
+       - Add CSV loading mode for real simulation data (see §13)
+
+11. [ ] Generate inertial data:
+        python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
+        Verify: full_params_data/inertial/FR/ has 4 CSVs × 3 cols
+
+12. [ ] Run friction ID: ./Go1_SysidFriction_test FR
+        Sanity: Fc≈[0.8,0.8,0.8], Fv≈[0.5,0.5,0.5], Ia≈[0.03,0.03,0.03]
+
+13. [ ] Run inertial ID: ./Go1_SysidInertial_test FR
+        Sanity: theta_solution close to phi_original for rank-17 identifiable subspace;
+        unidentifiable params (13 structural zeros) stay at URDF values via Tikhonov
+```
+---
+## 13. Next Session — Immediate Actions
+
+### Status as of session end
+- ✅ All optimization bugs fixed (IIDD L298 `j<n`→`j<10`, Momentum.h L30 missing comma, Momentum.cpp all 6 bugs)
+- ✅ CMakeLists.txt: `Go1_SysidInertial_test` + `Go1_SysidInertialMomentum_test` executables added
+- ✅ `TestFrictionParametersIdentification.cpp`: per-leg updates done in separate branch — **merge before running**
+- ⏸ `TestEndEffectorParametersIdentification.cpp`: synthetic test works; CSV loading mode not yet added (Hey Claude: Need to test momemtum also)
+
+### Priority 1:
+```bash
+make Go1_exciting_traj -j4
+mkdir -p data/FR && ./Go1_exciting_traj 1 FR
+# Verify: data/FR/exciting-trajectory-1.csv exists
+```
+
+### Priority 2: Add CSV loading to TestEndEffectorParametersIdentification.cpp (Hey Claude, also for Momentum version)
+Current driver is synthetic-only (BezierCurves). For real simulation data from `sysid_trajectory_generator.py --mode inertial`, add a CSV path when leg arg is provided.
+
+`TrajectoryData` mapping from 4 separate CSV files:
+- `q_downsampled.csv`   → `traj->q(i)`
+- `q_d_downsampled.csv` → `traj->q_d(i)`
+- `tau_downsampled.csv` → `traj->q_dd(i)`  ← NOTE: q_dd slot stores TORQUE in TrajectoryData
+- `q_dd_downsampled.csv`→ acceleration matrix (2nd arg to `add_trajectory_file` overload 1)
+
+Also change: `max_wall_time` 1.0 → 30.0 (30-param optimization needs more time).
+Data dir: `../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/inertial/<leg>/`
+
+### Priority 3: Run the full pipeline (FR leg)
+```bash
+# Merge TestFrictionParametersIdentification branch first, then build (Hey Claude, see the comments in EndEffectorMOmentumIdentifiaction, and discuss those)
+# Also is the data pipeline correct for how we are recording data and then how it is required in Parameter Identification. 
+cmake .. && make Go1_SysidFriction_test Go1_SysidInertial_test -j4 
+
+# Friction ID
+./Go1_SysidFriction_test FR
+# Sanity check friction_parameters_solution.csv:
+#   Fc ≈ [0.8, 0.8, 0.8], Fv ≈ [0.5, 0.5, 0.5], Ia ≈ [0.03, 0.03, 0.03]
+
+# Generate inertial data (needs exciting traj from Priority 1 first)
+python3 sysid_trajectory_generator.py --mode inertial --leg FR --run 1
+
+# Inertial ID (synthetic unit test first to verify convergence)
+./Go1_SysidInertial_test        # no arg = synthetic BezierCurves test
+./Go1_SysidInertial_test FR     # with arg = load real CSVs (after Priority 2)
+# Sanity: theta_solution close to phi_original for 17 identifiable params;
+#         13 unidentifiable params should stay near URDF values via Tikhonov ridge
+```
+
+### Priority 4 (deferred): sysid_friction_comparison.py refactor
+See `Examples/Unitree_Go1/python/refactor_sysid_friction_comparison.md` for all diffs.
 
