@@ -274,7 +274,7 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
     for (Index tid = 0; tid < trajPtrs_.size(); tid++) {
         const int num_segment = num_segments[tid];
         const auto& trajPtr_ = trajPtrs_[tid];
-        const auto& sensor_noise = trajPtr_->sensor_noise;
+        const auto& sensor_noise = trajPtr_->sensor_noise; // (x%*acceleration data here)
         for (Index s = 0; s < num_segment; s++) {
             int seg_start = s * H;
             int seg_end = seg_start + H;
@@ -287,7 +287,7 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
                     p_theta_p_x = dtheta_full * p_eta_p_x;
                     double torque_error = 0.0;
                     if (sensor_noise.acceleration_error_type == SensorNoiseInfo::SensorNoiseType::Ratio) {
-                        torque_error = std::abs(trajPtr_->q_dd(j)(k) * sensor_noise.acceleration_error(k));
+                        torque_error = std::abs(trajPtr_->q_dd(j)(k) * sensor_noise.acceleration_error(k));  // adding hypothetical torque error, and using that to get unbcertainity bounds. (TODO: BUG: this will double multiply if use_sensor_noise=True in sim)
                     }
                     else {
                         torque_error = sensor_noise.acceleration_error(k);

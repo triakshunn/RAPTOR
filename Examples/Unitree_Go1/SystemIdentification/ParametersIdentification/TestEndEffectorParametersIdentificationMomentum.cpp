@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
     sensor_noise.velocity_error.setZero();
     sensor_noise.acceleration_error_type =
         SensorNoiseInfo::SensorNoiseType::Ratio;
-    sensor_noise.acceleration_error.setConstant(0.10); // will need to change this value?? 
+    sensor_noise.acceleration_error.setConstant(0.10); // will need to change this value??  (this is the sensor noise added to torque data)
 
     // Initialize the Ipopt problem
     SmartPtr<EndEffectorParametersIdentificationMomentum> mynlp =
