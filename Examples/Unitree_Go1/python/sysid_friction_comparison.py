@@ -9,6 +9,7 @@ from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 import time
 import copy
+import argparse
 from datetime import datetime
 
 
@@ -25,27 +26,6 @@ Mathematically, the opti problem is independent of gains, but oif gains are low 
 sys.path.append("/workspaces/RAPTOR/build/lib")
 # import end_effector_sysid_nanobind
 
-# def desired_trajectory(t):
-#     """
-#     Computes the desired trajectory for a 7-DOF system based on sinusoidal functions.
-
-#     Parameters:
-#     t (float): The time variable.
-
-#     Returns:
-#     tuple: A tuple containing:
-#         - qd (numpy.ndarray): The desired joint positions, a 7-element array where each element is sin(t).
-#         - qd_d (numpy.ndarray): The desired joint velocities, a 7-element array where each element is cos(t).
-#         - qd_dd (numpy.ndarray): The desired joint accelerations, a 7-element array where each element is -sin(t).
-        
-#     Notes:
-#         This trajectory is not an exciting one, so the results may not be good on hardware.
-#     """
-#     qd = np.sin(t) * np.ones(7)
-#     qd_d = np.cos(t) * np.ones(7)
-#     qd_dd = -np.sin(t) * np.ones(7)
-#     return qd, qd_d, qd_dd
-
 
 def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
     """
@@ -59,13 +39,8 @@ def verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05):
     TAU_LIMIT_CALF      = 23.7   # N·m
     V_LIMIT             = 30.0    # rad/s
 
-    # Build per-joint torque limit array (12 joints: 4 legs × [hip, thigh, calf])
-    tau_limit = np.array([
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FR
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # FL
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RR
-        TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF,  # RL
-    ])
+    # Build per-joint torque limit array (3 joints: 1 leg × [hip, thigh, calf])
+    tau_limit = np.array([TAU_LIMIT_HIP_THIGH, TAU_LIMIT_HIP_THIGH, TAU_LIMIT_CALF])
     
     # Sample 1000 points evenly across the simulation duration for efficiency
     ts_sample = np.linspace(ts[0], ts[-1], 1000)
@@ -121,7 +96,7 @@ def desired_trajectory_leg(t, leg_offset, nq, q_nominal):
     qd_dd = np.zeros(nq)
     for k in range(3):
         w = 2 * np.pi * freqs[k]
-       qd[leg_offset + k]    = centers[k] + amplitudes[k] * np.sin(w * t + phases[k])
+        qd[leg_offset + k]    = centers[k] + amplitudes[k] * np.sin(w * t + phases[k])
         qd_d[leg_offset + k]  = amplitudes[k] * w * np.cos(w * t + phases[k])
         qd_dd[leg_offset + k] = -amplitudes[k] * w**2 * np.sin(w * t + phases[k])
     return qd, qd_d, qd_dd
@@ -199,7 +174,7 @@ def desired_trajectory_leg(t, leg_offset, nq, q_nominal):
 #     tau = kp * (qd - q) + kd * (qd_d - v)
 #     return tau
 
-def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
+def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idxs,
                model_ctrl=None, data_ctrl=None,
                Fc_ctrl=None, Fv_ctrl=None):
     """
@@ -212,12 +187,11 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idx,
     e   = qd   - q    # position error
     e_d = qd_d - v    # velocity error
 
-    # PD correction (added on top of feedforward)
-    Kp = np.ones(nv) * 40.0 
-    Kd = np.ones(nv) * 1.0
+    Kp=np.ones(nv)*40.0
+    Kd=np.ones(nv)*0.5
 
-    Kp[active_joint_idx] = 20.0
-    Kd[active_joint_idx] = 0.5
+    Kp[active_joint_idxs] = 20.0
+    Kd[active_joint_idxs] = 0.5
 
     if model_ctrl is None:
         # Fallback: pure PD
@@ -323,6 +297,8 @@ def compute_tracking_metrics(qs_actual, qd_desired_all, active_joint):
     -------
     dict with keys: 'rmse', 'max_error', 'mean_error', 'error_ts'
     """
+    
+
     error_ts   = np.abs(qs_actual[:, active_joint] - qd_desired_all[:, active_joint])
     rmse       = np.sqrt(np.mean(error_ts ** 2))
     max_error  = np.max(error_ts)
@@ -362,7 +338,7 @@ def print_metrics_table(results):
 
 def plot_active_joint_position(ts_clipped, qs_true_clipped, qs_esti_clipped, qs_noise_clipped,
                                 qd_des_all, active_joint, joint_label,
-                                metrics_true, metrics_esti, metrics_noise):
+                                metrics_true, metrics_esti, metrics_noise): ### need to replace??? 
     """
     Standalone 2-subplot position-tracking figure for a single active joint.
     Colour scheme (distinct, not overlapping):
@@ -383,16 +359,16 @@ def plot_active_joint_position(ts_clipped, qs_true_clipped, qs_esti_clipped, qs_
     )
     # Position subplot
     ax_pos.plot(ts_clipped, qd_des_all[:, active_joint],
-                color='darkorange', lw=1.5, ls='--', label='Desired', zorder=1)
+                color='darkorange', lw=1.5, ls='--', label='Desired', zorder=1, alpha=0.5)
     ax_pos.plot(ts_clipped, qs_true_clipped[:, active_joint],
                 color='crimson', lw=2.0, ls='-',
-                label=f'True IDC  (RMSE = {metrics_true["rmse"]:.5f} rad)', zorder=3)
+                label=f'True IDC  (RMSE = {metrics_true["rmse"]:.5f} rad)', zorder=3, alpha=0.5)
     ax_pos.plot(ts_clipped, qs_esti_clipped[:, active_joint],
                 color='dodgerblue', lw=1.5, ls='-',
-                label=f'Estimated (RMSE = {metrics_esti["rmse"]:.5f} rad)', zorder=2)
+                label=f'Estimated (RMSE = {metrics_esti["rmse"]:.5f} rad)', zorder=2, alpha=0.5)
     ax_pos.plot(ts_clipped, qs_noise_clipped[:, active_joint],
                 color='black', lw=1.5, ls='-',
-                label=f'Noisy     (RMSE = {metrics_noise["rmse"]:.5f} rad)', zorder=2)
+                label=f'Noisy     (RMSE = {metrics_noise["rmse"]:.5f} rad)', zorder=2, alpha=0.5)
     ax_pos.set_ylabel("Position (rad)", fontsize=10)
     ax_pos.legend(fontsize=9, loc='upper right')
     ax_pos.grid(True, alpha=0.35)
@@ -410,186 +386,159 @@ def plot_active_joint_position(ts_clipped, qs_true_clipped, qs_esti_clipped, qs_
     plt.tight_layout()
     return fig
 
-def make_grid(title, true_data, esti_data, noise_data, desired, ylabel, active_joint, ts_clipped, leg_names, joint_names):
-    """4×3 grid comparing true (solid red/blue) vs estimated (dashed) vs noisy (dashed) for all 12 joints."""
-    fig, axes = plt.subplots(4, 3, figsize=(14, 10), sharex=True)
-    fig.suptitle(title, fontsize=13)
-    for leg in range(4):
-        for j in range(3):
-            jidx = leg * 3 + j
-            ax   = axes[leg, j]
-            is_active = (jidx == active_joint)
-            
-            # Desired — darkorange dotted (drawn first, behind others)
-            ax.plot(ts_clipped, desired[:, jidx],
-                    color='darkorange', lw=1.0, ls=':', label='Desired', zorder=1)
-            # True IDC — crimson solid
-            ax.plot(ts_clipped, true_data[:, jidx],
-                    color='crimson' if is_active else 'firebrick',
-                    lw=2.0 if is_active else 1.0, ls='-',
-                    label='True IDC', zorder=3)
-            # Estimated — dodgerblue dashed
-            ax.plot(ts_clipped, esti_data[:, jidx],
-                    color='dodgerblue' if is_active else 'steelblue',
-                    lw=1.5, ls='--', label='Estimated', zorder=2)
-            # Noisy — black solid
-            ax.plot(ts_clipped, noise_data[:, jidx],
-                    color='black' if is_active else 'dimgray',
-                    lw=1.5, ls='-', label='Noisy', zorder=2)
+def make_grid(title, true_data, esti_data, noise_data, desired, ylabel, ts_clipped, leg_name, joint_names):
 
-            ax.set_title(
-                f"{leg_names[leg]} {joint_names[j]}  (j{jidx})"
-                + ("  ← ACTIVE" if is_active else ""),
-                fontsize=8,
-                fontweight='bold' if is_active else 'normal',
-                color='red' if is_active else 'black')
-            ax.grid(True, alpha=0.4)
-            if j == 0:
-                ax.set_ylabel(ylabel, fontsize=8)
-            if leg == 3:    
-                ax.set_xlabel("Time (s)", fontsize=8)
-            if leg == 0 and j == 0:
-                ax.legend(fontsize=7)
+    """1×3 grid for a single leg (3 joints)."""
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4), sharex=True)
+    fig.suptitle(title, fontsize=13)
+    for j in range(3):
+        ax = axes[j]
+        ax.plot(ts_clipped, desired[:, j],    color='darkorange', lw=1.0, ls=':',  label='Desired',   zorder=1)
+        ax.plot(ts_clipped, true_data[:, j],  color='crimson',    lw=2.0, ls='-',  label='True IDC',  zorder=3)
+        ax.plot(ts_clipped, esti_data[:, j],  color='dodgerblue', lw=1.5, ls='--', label='Estimated', zorder=2)
+        ax.plot(ts_clipped, noise_data[:, j], color='black',      lw=1.5, ls='-',  label='Noisy',     zorder=2)
+        ax.set_title(f"{leg_name} {joint_names[j]}  (j{j})", fontsize=9, fontweight='bold')
+        ax.grid(True, alpha=0.4)
+        if j == 0:
+            ax.set_ylabel(ylabel, fontsize=8)
+        ax.set_xlabel("Time (s)", fontsize=8)
+        if j == 0:
+           ax.legend(fontsize=7)
     plt.tight_layout()
     return fig
 
 def main():
     # initialization for simulation and data collection
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    urdf_filename = os.path.abspath(os.path.join(current_dir, "../../../Robots/unitree-go1/go1.urdf"))
-    model = pin.buildModelFromUrdf(urdf_filename)
-    model_esti = copy.deepcopy(model)      # independent copy — has its own armature field
-    model_noise=copy.deepcopy(model)
-    # ### added for vis
-    # model_vis, collision_model, visual_model = pin.buildModelsFromUrdf(urdf_filename)
-    # data_vis = model_vis.createData()
 
-    q_lower = model.lowerPositionLimit   # shape (nq,) = (12,) for full Go1
-    q_upper = model.upperPositionLimit   # shape (nq,) = (12,) for full Go1
-
-    if model.nq == 12:
-        q_nominal = np.array([0.0, 0.5, -1.0] * 4) ### changed from the trajectories. 
-    else:
-        # Fallback for Kinova (7 joints) or other models
-        q_nominal = np.zeros(model.nq)
-
-   
-    q0 = np.copy(q_nominal)  # Set initial state to the nominal pose
-    v0 = np.zeros(model.nv)
-
-    dt = 1e-4 # 0.1 ms data measurement loop
-    ts_sim = np.arange(0, 5, dt) # 5 seconds simulation
-
-    # Realistic values for Go1 leg joints (adjust to your liking)
-    Fc_true = np.zeros(model.nv)
-    Fv_true = np.zeros(model.nv)
-    Ia_true = np.zeros(model.nv)
-
-    Fc_estimated = np.zeros(model.nv)
-    Fv_estimated = np.zeros(model.nv)
-    Ia_estimated = np.zeros(model.nv)
-
-    Fc_noise = np.zeros(model.nv)
-    Fv_noise = np.zeros(model.nv)
-    Ia_noise = np.zeros(model.nv)
-    
-    # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf)
-    Fc_true[0:3] = [0.5, 0.8, 0.6]   # Coulomb friction (N·m)
-    Fv_true[0:3] = [0.3, 0.5, 0.4]   # Viscous damping (N·m·s/rad)
-    Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-
-    # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    # Fc_estimated[0:3] = [0.46, 0.77, 0.55]   # Coulomb friction (N·m)
-    # Fv_estimated[0:3] = [0.36, 0.51, 0.47]   # Viscous damping (N·m·s/rad)
-    # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    #### Upper are high gains estimated params(200_20 with original (farther) init conditions)
-
-
-    # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    # Fc_estimated[0:3] = [0.46, 0.76, 0.55]   # Coulomb friction (N·m)
-    # Fv_estimated[0:3] = [0.37, 0.53, 0.48]   # Viscous damping (N·m·s/rad)
-    # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    # ### Upper are high gains estimated params (200_20 with closer init positions)
-
-    # # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    # # Fc_estimated[0:3] = [0.35, 0.67, 0.43]   # Coulomb friction (N·m)
-    # # Fv_estimated[0:3] = [0.52, 0.54, 0.65]   # Viscous damping (N·m·s/rad)
-    # # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    # # #### Upper are low gains estimated params
-
-    # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    # Fc_estimated[0:3] = [0.37, 0.62, 0.44]   # Coulomb friction (N·m)
-    # Fv_estimated[0:3] = [0.53, 0.63, 0.64]   # Viscous damping (N·m·s/rad)
-    # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    # #### Upper are series 60_3 gain results 
-
-    # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    # Fc_estimated[0:3] = [0.37, 0.62, 0.44]   # Coulomb friction (N·m)
-    # Fv_estimated[0:3] = [0.51, 0.63, 0.65]   # Viscous damping (N·m·s/rad)
-    # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    # #### Upper are parallel 60_3 gain results (Not a lot of effect then?)
-
-        # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
-    Fc_estimated[0:3] = [0.50, 0.80, 0.60]   # Coulomb friction (N·m)
-    Fv_estimated[0:3] = [0.30, 0.50, 0.40]   # Viscous damping (N·m·s/rad)
-    Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
-    #### Upper are parallel 60_3 gain results with filtering near zero vel
-    
-    ## Noisy friction parameters for result validation (20% noise)
-    Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)
-    Fv_noise[0:3] = Fv_true[0:3]+[-Fv_true[0]*0.20,-Fv_true[1]*0.20,Fv_true[2]*0.2]   # Viscous damping (N·m·s/rad)
-    Ia_noise[0:3] = Ia_true[0:3]+[Ia_true[0]*0.20,Ia_true[1]*0.20,-Ia_true[2]*0.2] # Armature inertia (kg·m²)
-
-
-    print("Noisy friction parameters:", Fc_noise, Fv_noise, Ia_noise)
-
-    '''
-    Noisy friction parameters: [0.6  0.64 0.72 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
-    [0.24 0.4  0.48 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
-    [0.024 0.036 0.016 0.    0.    0.    0.    0.    0.    0.    0.    0.   ]
-    '''
-
-     # ── Labels ───────────────────────────────────────────────────────────────
-    leg_names   = ["FR", "FL", "RR", "RL"]
-    joint_names = ["Hip", "Thigh", "Calf"]
-
-     # ── Storage for metrics table and last-run grid data ──────────────────────
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', choices=['friction', 'inertial'], required=True)
+    parser.add_argument('--leg',  choices=['FR', 'FL', 'RR', 'RL'], nargs='+', required=True)
+    args = parser.parse_args()
+    current_dir   = os.path.dirname(os.path.abspath(__file__))
+    sysid_dir     = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data"))
     metrics_summary = []
-    last_run = {}
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.abspath(os.path.join(current_dir, f"../SystemIdentification/ParametersIdentification/friction_results/run_{timestamp}/")) + "/"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    for active_joint in [0,1,2]:
 
-        leg_idx     = active_joint // 3   # always 0 (FR)
-        local_idx   = active_joint % 3
-        joint_label = f"{leg_names[leg_idx]} {joint_names[local_idx]}"
+    
+    
+    for LEG_NAME in args.leg:
+        urdf_filename = os.path.abspath(os.path.join(current_dir, f"../../../Robots/unitree-go1/go1_{LEG_NAME}.urdf"))
+        model       = pin.buildModelFromUrdf(urdf_filename)
+        model_esti  = copy.deepcopy(model)
+        model_noise = copy.deepcopy(model)
+        leg_joints  = [0, 1, 2]
+
+        q_nominal = np.array([0.0, 1.9, -1.85])   # FR trajectory centers (same for all legs)
+        q0 = np.copy(q_nominal)  # Set initial state to the nominal pose
+        joint_names = ["Hip", "Thigh", "Calf"]
+        v0 = np.zeros(model.nv)
+        q_lower = model.lowerPositionLimit   # shape (nq,) = (12,) for full Go1, these should be still required (Doubt)
+        q_upper = model.upperPositionLimit   # shape (nq,) = (12,) for full Go1
+    
+        dt = 1e-4 # 0.1 ms data measurement loop
+        ts_sim = np.arange(0, 5, dt) # 5 seconds simulation
+
+        # Realistic values for Go1 leg joints (adjust to your liking)
+        Fc_true = np.zeros(model.nv)
+        Fv_true = np.zeros(model.nv)
+        Ia_true = np.zeros(model.nv)
+
+        Fc_estimated = np.zeros(model.nv)
+        Fv_estimated = np.zeros(model.nv)
+        Ia_estimated = np.zeros(model.nv)
+
+        Fc_noise = np.zeros(model.nv)
+        Fv_noise = np.zeros(model.nv)
+        Ia_noise = np.zeros(model.nv)
+        
+        # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf)
+        Fc_true[0:3] = [0.5, 0.8, 0.6]   # Coulomb friction (N·m)
+        Fv_true[0:3] = [0.3, 0.5, 0.4]   # Viscous damping (N·m·s/rad)
+        Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+
+        # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+        # Fc_estimated[0:3] = [0.46, 0.77, 0.55]   # Coulomb friction (N·m)
+        # Fv_estimated[0:3] = [0.36, 0.51, 0.47]   # Viscous damping (N·m·s/rad)
+        # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+        #### Upper are high gains estimated params(200_20 with original (farther) init conditions)
+
+
+        # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+        # Fc_estimated[0:3] = [0.46, 0.76, 0.55]   # Coulomb friction (N·m)
+        # Fv_estimated[0:3] = [0.37, 0.53, 0.48]   # Viscous damping (N·m·s/rad)
+        # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+        # ### Upper are high gains estimated params (200_20 with closer init positions)
+
+        # # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+        # # Fc_estimated[0:3] = [0.35, 0.67, 0.43]   # Coulomb friction (N·m)
+        # # Fv_estimated[0:3] = [0.52, 0.54, 0.65]   # Viscous damping (N·m·s/rad)
+        # # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+        # # #### Upper are low gains estimated params
+
+        # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+        # Fc_estimated[0:3] = [0.37, 0.62, 0.44]   # Coulomb friction (N·m)
+        # Fv_estimated[0:3] = [0.53, 0.63, 0.64]   # Viscous damping (N·m·s/rad)
+        # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+        # #### Upper are series 60_3 gain results 
+
+        # # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+        # Fc_estimated[0:3] = [0.37, 0.62, 0.44]   # Coulomb friction (N·m)
+        # Fv_estimated[0:3] = [0.51, 0.63, 0.65]   # Viscous damping (N·m·s/rad)
+        # Ia_estimated[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
+        # #### Upper are parallel 60_3 gain results (Not a lot of effect then?)
+
+            # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
+        
+
+        friction_csv = os.path.join(sysid_dir, f"friction/{LEG_NAME}/friction_parameters_solution.csv")
+        fp = np.loadtxt(friction_csv)   # [Fc(3), Fv(3), Ia(3)]
+        Fc_estimated = fp[0:3]
+        Fv_estimated = fp[3:6]
+        Ia_estimated = fp[6:9]
+
+        #### Upper are parallel 60_3 gain results with filtering near zero vel
+        
+        ## Noisy friction parameters for result validation (20% noise)
+        Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)
+        Fv_noise[0:3] = Fv_true[0:3]+[-Fv_true[0]*0.20,-Fv_true[1]*0.20,Fv_true[2]*0.2]   # Viscous damping (N·m·s/rad)
+        Ia_noise[0:3] = Ia_true[0:3]+[Ia_true[0]*0.20,Ia_true[1]*0.20,-Ia_true[2]*0.2] # Armature inertia (kg·m²)
+
+
+        print(f"True      Fc={Fc_true}  Fv={Fv_true}  Ia={Ia_true}")
+        print(f"Estimated Fc={Fc_estimated}  Fv={Fv_estimated}  Ia={Ia_estimated}")
+        print(f"Noisy     Fc={Fc_noise}  Fv={Fv_noise}  Ia={Ia_noise}")
+
+        '''
+        Noisy friction parameters: [0.6  0.64 0.72 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
+        [0.24 0.4  0.48 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
+        [0.024 0.036 0.016 0.    0.    0.    0.    0.    0.    0.    0.    0.   ]
+        '''
+
+        # ── Storage for metrics table and last-run grid data ──────────────────────
+    
+
+
+        output_dir = os.path.abspath(os.path.join(current_dir, f"../SystemIdentification/ParametersIdentification/{args.mode}_traj_results/{LEG_NAME}/run_{timestamp}/")) + "/"
+        os.makedirs(output_dir, exist_ok=True)
+    
         print(f"\n{'─'*60}")
-        print(f"  Simulating active_joint = {active_joint}  ({joint_label})")
+        print(f"  Simulating leg {LEG_NAME} — all 3 joints simultaneously")
         print(f"{'─'*60}")
-    
-    # Wrap the trajectory function using a lambda so it accepts only time 't'
-        traj_fn = lambda t: desired_trajectory_full(t, active_joint, model.nq, q_nominal) ### IMP: we are passing active joint as lambda func, so if ever this func called outside the for loop, will take last value of active joint inside
+        traj_fn = lambda t: desired_trajectory_leg(t, 0, model.nq, q_nominal)
 
-    # Run the safety verification BEFORE simulating
-        verify_trajectory_safety(traj_fn, ts_sim, model, margin=0.05)
-
-    # ctrl_fn = lambda q, v, qd, qd_d, qd_dd: controller(model.nv, q, v, qd, qd_d, qd_dd, active_joint)
     
         # True controller — uses true friction params
         data_true = model.createData() ### what is this function?? Used for RNEA calculation
         ctrl_fn_true = lambda q, v, qd, qd_d, qd_dd: controller(
-            model.nv, q, v, qd, qd_d, qd_dd, active_joint,
+            model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
             model_ctrl=model, data_ctrl=data_true, 
             Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
 
         # Estimated controller — uses identified friction params
         model_esti.armature = Ia_estimated 
         data_esti = model_esti.createData()
-        ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller(
-            model.nv, q, v, qd, qd_d, qd_dd, active_joint,
+        ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller( 
+            model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
             model_ctrl=model_esti, data_ctrl=data_esti, 
             Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
 
@@ -597,20 +546,23 @@ def main():
         model_noise.armature = Ia_noise 
         data_noise = model_noise.createData()
         ctrl_fn_noise = lambda q, v, qd, qd_d, qd_dd: controller(
-            model.nv, q, v, qd, qd_d, qd_dd, active_joint,
+            model.nv, q, v, qd, qd_d, qd_dd,leg_joints, 
             model_ctrl=model_noise, data_ctrl=data_noise, 
             Fc_ctrl=Fc_noise, Fv_ctrl=Fv_noise)
+    
+        # Run the safety verification BEFORE simulating
+        verify_trajectory_safety(traj_fn, ctrl_fn_true, ts_sim, model, margin=0.05)
     
 
         # simulate the robot dynamics using ode solver
         # track the desired trajectory using the controller (ground truth)
-        qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, active_joint, Fc_true, Fv_true, Ia_true)
+        qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, Fc_true, Fv_true, Ia_true)
         
         ### track the desired trajectory using the controller (estimate)
-        qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, active_joint, Fc_true, Fv_true, Ia_true)
+        qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, Fc_true, Fv_true, Ia_true)
 
         ### track the desired trajectory using the controller (noisy)
-        qs_noise, vs_noise, taus_noise = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_noise, active_joint, Fc_true, Fv_true, Ia_true)
+        qs_noise, vs_noise, taus_noise = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_noise, Fc_true, Fv_true, Ia_true)
 
         # estimate acceleration using central difference method on velocity data
         accs_true, dt = central_difference_4th_order(ts_sim, vs_true)
@@ -647,18 +599,18 @@ def main():
         # print(f"q_dd_clipped is {accs_filtered}")
         # print(f"tau_clipped is {taus_clipped}")
 
-        np.savetxt(output_dir + f"q_true_{active_joint}.csv",   qs_true_clipped,   delimiter=" ")
-        np.savetxt(output_dir + f"q_d_true_{active_joint}.csv",  vs_true_clipped,   delimiter=" ")
-        np.savetxt(output_dir + f"q_dd_true_{active_joint}.csv", accs_true_filtered, delimiter=" ")
-        np.savetxt(output_dir + f"tau_true_{active_joint}.csv",  taus_true_clipped, delimiter=" ")
-        np.savetxt(output_dir + f"q_esti_{active_joint}.csv",   qs_esti_clipped,   delimiter=" ")
-        np.savetxt(output_dir + f"q_d_esti_{active_joint}.csv",  vs_esti_clipped,   delimiter=" ")
-        np.savetxt(output_dir + f"q_dd_esti_{active_joint}.csv", accs_esti_filtered, delimiter=" ")
-        np.savetxt(output_dir + f"tau_esti_{active_joint}.csv",  taus_esti_clipped, delimiter=" ")
-        np.savetxt(output_dir + f"q_noise_{active_joint}.csv",   qs_noise_clipped,   delimiter=" ")
-        np.savetxt(output_dir + f"q_d_noise_{active_joint}.csv",  vs_noise_clipped,   delimiter=" ")
-        np.savetxt(output_dir + f"q_dd_noise_{active_joint}.csv", accs_noise_filtered, delimiter=" ")
-        np.savetxt(output_dir + f"tau_noise_{active_joint}.csv",  taus_noise_clipped, delimiter=" ")
+        np.savetxt(output_dir + f"q_true.csv",   qs_true_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_d_true.csv",  vs_true_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_dd_true.csv", accs_true_filtered, delimiter=" ")
+        np.savetxt(output_dir + f"tau_true.csv",  taus_true_clipped, delimiter=" ")
+        np.savetxt(output_dir + f"q_esti.csv",   qs_esti_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_d_esti.csv",  vs_esti_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_dd_esti.csv", accs_esti_filtered, delimiter=" ")
+        np.savetxt(output_dir + f"tau_esti.csv",  taus_esti_clipped, delimiter=" ")
+        np.savetxt(output_dir + f"q_noise.csv",   qs_noise_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_d_noise.csv",  vs_noise_clipped,   delimiter=" ")
+        np.savetxt(output_dir + f"q_dd_noise.csv", accs_noise_filtered, delimiter=" ")
+        np.savetxt(output_dir + f"tau_noise.csv",  taus_noise_clipped, delimiter=" ")
 
         # ── Static sanity check plots: all 12 joints ──────────────────────────
         ts_clipped = ts_sim[2:-2]
@@ -666,16 +618,17 @@ def main():
         # Pre-compute desired position, velocity, acceleration for all 12 joints
         print("Pre-computing desired trajectories for all joints...")
         qd_des_all  = np.array([traj_fn(t)[0] for t in ts_clipped])   # (N, 12)
-        vd_des_all  = np.array([traj_fn(t)[1] for t in ts_clipped])   # (N, 12)
-        add_des_all = np.array([traj_fn(t)[2] for t in ts_clipped])   # (N, 12)
+        # vd_des_all  = np.array([traj_fn(t)[1] for t in ts_clipped])   # (N, 12)
+        # add_des_all = np.array([traj_fn(t)[2] for t in ts_clipped])   # (N, 12)
 
-        # Tracking error metrics
-        metrics_true = compute_tracking_metrics(qs_true_clipped, qd_des_all, active_joint)
-        metrics_esti = compute_tracking_metrics(qs_esti_clipped, qd_des_all, active_joint)
-        metrics_noise = compute_tracking_metrics(qs_noise_clipped, qd_des_all, active_joint)
-
-        metrics_summary.append({
-            'joint_idx':  active_joint,
+        
+        for k,jidx in enumerate(leg_joints):
+            joint_label = f"{LEG_NAME} {joint_names[k]}"
+            metrics_true  = compute_tracking_metrics(qs_true_clipped,  qd_des_all, jidx)
+            metrics_esti  = compute_tracking_metrics(qs_esti_clipped,  qd_des_all, jidx)
+            metrics_noise  = compute_tracking_metrics(qs_noise_clipped,  qd_des_all, jidx)
+            metrics_summary.append({
+            'joint_idx':  jidx,
             'joint_name': joint_label,
             'true_rmse':  metrics_true['rmse'],
             'true_max':   metrics_true['max_error'],
@@ -687,37 +640,22 @@ def main():
             'noise_max':  metrics_noise['max_error'],
             'noise_mean': metrics_noise['mean_error'],
         })
+            
+            fig = plot_active_joint_position(ts_clipped, qs_true_clipped, qs_esti_clipped, qs_noise_clipped,
+                                             qd_des_all, jidx, joint_label,
+                                             metrics_true, metrics_esti, metrics_noise)
+            fig.savefig(output_dir + f"tracking_{LEG_NAME}_{joint_names[k]}.png", dpi=150, bbox_inches='tight')
 
-        # Focused single-joint position plot
-        plot_active_joint_position(
-            ts_clipped, qs_true_clipped, qs_esti_clipped, qs_noise_clipped,
-            qd_des_all, active_joint, joint_label,
-            metrics_true, metrics_esti, metrics_noise)
-
-        make_grid("Position — True vs Estimated vs Noisy (all 12 joints)",
-              qs_true_clipped, qs_esti_clipped, qs_noise_clipped,
-              qd_des_all, "rad", active_joint, ts_clipped, leg_names, joint_names)
               
+        fig_grid = make_grid(f"Position — {LEG_NAME} ({args.mode})",
+                             qs_true_clipped, qs_esti_clipped, qs_noise_clipped,
+                              qd_des_all, "rad", ts_clipped, LEG_NAME, joint_names)
+        
+        fig_grid.savefig(output_dir + f"grid_{LEG_NAME}.png", dpi=150, bbox_inches='tight')
 
-
-    # ── Print consolidated metrics table ──────────────────────────────────────
     print_metrics_table(metrics_summary)
-
     plt.show()
     print("Plots complete.")
-
-
-    # make_grid("Position — Actual vs Desired (all 12 joints)",
-    #           qs_clipped, qd_des_all, "rad", active_joint)
-
-    # make_grid("Velocity — Actual vs Desired (all 12 joints)",
-    #           vs_clipped, vd_des_all, "rad/s", active_joint)
-
-    # make_grid("Acceleration — Estimated vs Desired (all 12 joints)",
-    #           accs_filtered, add_des_all, "rad/s²", active_joint)
-
-    # plt.show()
-    # print("Plots complete.")
     
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ from scipy.integrate import solve_ivp
 
 
 
-def integrate(model, ts_sim, x0, desired_trajectory, controller, active_joint, Fc_true, Fv_true, Ia_true, method='RK45'):
+def integrate(model, ts_sim, x0, desired_trajectory, controller, Fc_true, Fv_true, Ia_true, method='RK45'):
     """
     Integrates the dynamics of a robotic system over a given time period.
     Parameters:
