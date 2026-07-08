@@ -15,13 +15,6 @@ from datetime import datetime
 
 from go1_dynamics import integrate
 
-'''
-
-Possible food for thought: Currently my gains are high enough for the data collection controller , that it is able to follow the trajectory with unknown friction dynamics closely, and I use
-that for my optimization proble. What if it cannot by reducing high gains? will that effect? My answer no, since the optimization problem needs tau(data) to be able to track ideal trajectory
-Mathematically, the opti problem is independent of gains, but oif gains are low enough to not be able to track the trajectory, exciting trajectory will be bad, and we will not get good results.
-
-'''
 
 sys.path.append("/workspaces/RAPTOR/build/lib")
 # import end_effector_sysid_nanobind
@@ -176,7 +169,7 @@ def desired_trajectory_leg(t, leg_offset, nq, q_nominal):
 
 def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idxs,
                model_ctrl=None, data_ctrl=None,
-               Fc_ctrl=None, Fv_ctrl=None):
+               Fc_ctrl=None, Fv_ctrl=None): 
     """
     Inverse Dynamics Controller (Computed Torque).
     Uses model-based feedforward + PD feedback + friction compensation.
@@ -311,6 +304,22 @@ def compute_tracking_metrics(qs_actual, qd_desired_all, active_joint):
     }
 
 
+def get_phi_from_model(model):
+   phi = np.zeros(10 * model.nv)
+   for k in range(model.nv):
+       phi[10*k : 10*(k+1)] = model.inertias[k + 1].toDynamicParameters()
+   return phi
+
+def set_phi_to_model(model, phi_30):
+   for k in range(model.nv):
+       p = phi_30[10*k : 10*(k+1)]
+       m = p[0]
+       c = p[1:4] / m if m > 1e-10 else np.zeros(3)
+       Ixx, Ixy, Iyy, Ixz, Iyz, Izz = p[4:]
+       I_origin = np.array([[Ixx, Ixy, Ixz], [Ixy, Iyy, Iyz], [Ixz, Iyz, Izz]])
+       I_com = I_origin - m * (np.dot(c, c) * np.eye(3) - np.outer(c, c)) ### Parallel Axis Theorem
+       model.inertias[k + 1] = pin.Inertia(m, c, I_com)
+
 def print_metrics_table(results):
     """
     Print a formatted summary table of tracking error metrics for all simulated joints.
@@ -411,7 +420,7 @@ def main():
     # initialization for simulation and data collection
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=['friction', 'inertial'], required=True)
+    parser.add_argument('--mode', choices=['friction', 'inertial'], required=True) ### inertial mode has two branches, if friction solution exists, then inertial+friction else only inertial
     parser.add_argument('--leg',  choices=['FR', 'FL', 'RR', 'RL'], nargs='+', required=True)
     args = parser.parse_args()
     current_dir   = os.path.dirname(os.path.abspath(__file__))
@@ -490,69 +499,156 @@ def main():
             # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (Change these to values calculated from the optimization problem)
         
 
-        friction_csv = os.path.join(sysid_dir, f"friction/{LEG_NAME}/friction_parameters_solution.csv")
-        fp = np.loadtxt(friction_csv)   # [Fc(3), Fv(3), Ia(3)]
-        Fc_estimated = fp[0:3]
-        Fv_estimated = fp[3:6]
-        Ia_estimated = fp[6:9]
+        if args.mode=="friction":
 
-        #### Upper are parallel 60_3 gain results with filtering near zero vel
+
+            friction_csv = os.path.join(sysid_dir, f"friction/{LEG_NAME}/friction_parameters_solution.csv")
+            fp = np.loadtxt(friction_csv)   # [Fc(3), Fv(3), Ia(3)]
+            Fc_estimated = fp[0:3]
+            Fv_estimated = fp[3:6]
+            Ia_estimated = fp[6:9]
+
+            #### Upper are parallel 60_3 gain results with filtering near zero vel
+            
+            ## Noisy friction parameters for result validation (20% noise)
+            Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)
+            Fv_noise[0:3] = Fv_true[0:3]+[-Fv_true[0]*0.20,-Fv_true[1]*0.20,Fv_true[2]*0.2]   # Viscous damping (N·m·s/rad)
+            Ia_noise[0:3] = Ia_true[0:3]+[Ia_true[0]*0.20,Ia_true[1]*0.20,-Ia_true[2]*0.2] # Armature inertia (kg·m²)
+
+
+            print(f"True      Fc={Fc_true}  Fv={Fv_true}  Ia={Ia_true}")
+            print(f"Estimated Fc={Fc_estimated}  Fv={Fv_estimated}  Ia={Ia_estimated}")
+            print(f"Noisy     Fc={Fc_noise}  Fv={Fv_noise}  Ia={Ia_noise}")
+
+            '''
+            Noisy friction parameters: [0.6  0.64 0.72 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
+            [0.24 0.4  0.48 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
+            [0.024 0.036 0.016 0.    0.    0.    0.    0.    0.    0.    0.    0.   ]
+            '''
+
+            # ── Storage for metrics table and last-run grid data ──────────────────────
         
-        ## Noisy friction parameters for result validation (20% noise)
-        Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)
-        Fv_noise[0:3] = Fv_true[0:3]+[-Fv_true[0]*0.20,-Fv_true[1]*0.20,Fv_true[2]*0.2]   # Viscous damping (N·m·s/rad)
-        Ia_noise[0:3] = Ia_true[0:3]+[Ia_true[0]*0.20,Ia_true[1]*0.20,-Ia_true[2]*0.2] # Armature inertia (kg·m²)
+        else: 
 
-
-        print(f"True      Fc={Fc_true}  Fv={Fv_true}  Ia={Ia_true}")
-        print(f"Estimated Fc={Fc_estimated}  Fv={Fv_estimated}  Ia={Ia_estimated}")
-        print(f"Noisy     Fc={Fc_noise}  Fv={Fv_noise}  Ia={Ia_noise}")
-
-        '''
-        Noisy friction parameters: [0.6  0.64 0.72 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
-        [0.24 0.4  0.48 0.   0.   0.   0.   0.   0.   0.   0.   0.  ] 
-        [0.024 0.036 0.016 0.    0.    0.    0.    0.    0.    0.    0.    0.   ]
-        '''
-
-        # ── Storage for metrics table and last-run grid data ──────────────────────
+            friction_csv = os.path.join(sysid_dir, f"friction/{LEG_NAME}/friction_parameters_solution.csv")
+            if os.path.exists(friction_csv):
+               fp = np.loadtxt(friction_csv)
+               Fc_estimated[:] = fp[0:3]; Fv_estimated[:] = fp[3:6]; Ia_estimated[:] = fp[6:9]
+               ## Noisy friction parameters for result validation (20% noise)
+               Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)
+               Fv_noise[0:3] = Fv_true[0:3]+[-Fv_true[0]*0.20,-Fv_true[1]*0.20,Fv_true[2]*0.2]   # Viscous damping (N·m·s/rad)
+               Ia_noise[0:3] = Ia_true[0:3]+[Ia_true[0]*0.20,Ia_true[1]*0.20,-Ia_true[2]*0.2] # Armature inertia (kg·m²)
     
+
+            inertial_csv = os.path.join(sysid_dir, f"inertial/{LEG_NAME}/inertial_parameters_solution.csv")
+            phi_estimated = np.loadtxt(inertial_csv, delimiter=',').flatten()
+            phi_urdf = get_phi_from_model(model)
+            rng = np.random.default_rng(seed=42)
+            phi_noise = phi_urdf * (1.0 + rng.choice([-1, 1], size=30) * 0.20) ### 20% noise
+            print(f"True Fc={Fc_estimated}  Fv={Fv_estimated}  Ia={Ia_estimated}")
+            print(f" URDF inertial params: {phi_urdf}")
+            print(f"Loaded inertial params: {phi_estimated}")
+            print(f" Noisy inertial params: {phi_noise}")
+
+
+
 
 
         output_dir = os.path.abspath(os.path.join(current_dir, f"../SystemIdentification/ParametersIdentification/{args.mode}_traj_results/{LEG_NAME}/run_{timestamp}/")) + "/"
         os.makedirs(output_dir, exist_ok=True)
-    
+        
         print(f"\n{'─'*60}")
         print(f"  Simulating leg {LEG_NAME} — all 3 joints simultaneously")
         print(f"{'─'*60}")
         traj_fn = lambda t: desired_trajectory_leg(t, 0, model.nq, q_nominal)
 
     
-        # True controller — uses true friction params
-        data_true = model.createData() ### what is this function?? Used for RNEA calculation
-        ctrl_fn_true = lambda q, v, qd, qd_d, qd_dd: controller(
-            model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
-            model_ctrl=model, data_ctrl=data_true, 
-            Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
+        if args.mode=="friction":
+        
+        
+            # True controller — uses true friction params
+            data_true = model.createData() ### what is this function?? Used for RNEA calculation
+            model.armature=Ia_true
+            ctrl_fn_true = lambda q, v, qd, qd_d, qd_dd: controller( 
+                model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
+                model_ctrl=model, data_ctrl=data_true, 
+                Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
 
-        # Estimated controller — uses identified friction params
-        model_esti.armature = Ia_estimated 
-        data_esti = model_esti.createData()
-        ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller( 
-            model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
-            model_ctrl=model_esti, data_ctrl=data_esti, 
-            Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
+            # Estimated controller — uses identified friction params
+            model_esti.armature = Ia_estimated 
+            data_esti = model_esti.createData()
+            ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller( 
+                model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
+                model_ctrl=model_esti, data_ctrl=data_esti, 
+                Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
 
-        # Noisy controller — uses noisy friction params
-        model_noise.armature = Ia_noise 
-        data_noise = model_noise.createData()
-        ctrl_fn_noise = lambda q, v, qd, qd_d, qd_dd: controller(
-            model.nv, q, v, qd, qd_d, qd_dd,leg_joints, 
-            model_ctrl=model_noise, data_ctrl=data_noise, 
-            Fc_ctrl=Fc_noise, Fv_ctrl=Fv_noise)
-    
-        # Run the safety verification BEFORE simulating
-        verify_trajectory_safety(traj_fn, ctrl_fn_true, ts_sim, model, margin=0.05)
-    
+            # Noisy controller — uses noisy friction params
+            model_noise.armature = Ia_noise 
+            data_noise = model_noise.createData()
+            ctrl_fn_noise = lambda q, v, qd, qd_d, qd_dd: controller(
+                model.nv, q, v, qd, qd_d, qd_dd,leg_joints, 
+                model_ctrl=model_noise, data_ctrl=data_noise, 
+                Fc_ctrl=Fc_noise, Fv_ctrl=Fv_noise)
+            
+            # Run the safety verification BEFORE simulating
+            verify_trajectory_safety(traj_fn, ctrl_fn_true, ts_sim, model, margin=0.05)
+            
+
+        else:
+            
+             # True controller — uses true friction params
+            data_true = model.createData() ### what is this function?? Used for RNEA calculation
+
+            model.armature=Ia_true
+            ctrl_fn_true = lambda q, v, qd, qd_d, qd_dd: controller( 
+                model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
+                model_ctrl=model, data_ctrl=data_true, 
+                Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
+
+            # Estimated controller — uses identified friction params
+            if os.path.exists(friction_csv):
+
+                model_esti.armature = Ia_estimated 
+                set_phi_to_model(model_esti, phi_estimated)
+                data_esti = model_esti.createData()
+                ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller( 
+                    model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
+                    model_ctrl=model_esti, data_ctrl=data_esti, 
+                    Fc_ctrl=Fc_estimated, Fv_ctrl=Fv_estimated)
+            else:
+                
+                model_esti.armature = Ia_true
+                set_phi_to_model(model_esti, phi_estimated)
+                data_esti = model_esti.createData()
+                ctrl_fn_esti = lambda q, v, qd, qd_d, qd_dd: controller( 
+                    model.nv, q, v, qd, qd_d, qd_dd,leg_joints,
+                    model_ctrl=model_esti, data_ctrl=data_esti, 
+                    Fc_ctrl=Fc_true, Fv_ctrl=Fv_true) #### if no friction parameters give, these friction parameters will be true friction parameters
+
+            # Noisy controller — uses noisy friction params
+            
+
+            if os.path.exists(friction_csv):
+                model_noise.armature = Ia_noise 
+                set_phi_to_model(model_noise, phi_noise)
+                data_noise = model_noise.createData()
+                ctrl_fn_noise = lambda q, v, qd, qd_d, qd_dd: controller(
+                    model.nv, q, v, qd, qd_d, qd_dd,leg_joints, 
+                    model_ctrl=model_noise, data_ctrl=data_noise, 
+                    Fc_ctrl=Fc_noise, Fv_ctrl=Fv_noise)
+            else:
+                model_noise.armature = Ia_true
+                set_phi_to_model(model_noise, phi_noise)
+                data_noise = model_noise.createData()
+                ctrl_fn_noise = lambda q, v, qd, qd_d, qd_dd: controller(
+                    model.nv, q, v, qd, qd_d, qd_dd,leg_joints, 
+                    model_ctrl=model_noise, data_ctrl=data_noise, 
+                    Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
+
+            
+            # Run the safety verification BEFORE simulating
+            verify_trajectory_safety(traj_fn, ctrl_fn_true, ts_sim, model, margin=0.05)
+
 
         # simulate the robot dynamics using ode solver
         # track the desired trajectory using the controller (ground truth)
