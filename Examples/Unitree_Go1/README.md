@@ -197,3 +197,68 @@ full_params_data/
             acceleration_<ts>.csv
             inertial_parameters_solution_<ts>.csv     ← 30 params, comma-delimited
 ```
+
+---
+
+## WIP: Real Robot Implementation ToDos
+
+> These steps mirror the simulation pipeline exactly — same trajectories, same solvers, same comparison scripts. Only the data collection layer changes.
+
+### Background: Go1 Low-Level API
+
+The Go1 exposes a **500 Hz UDP interface** for direct joint control via `unitree_legged_sdk` (C++, [github.com/unitreerobotics/unitree_legged_sdk](https://github.com/unitreerobotics/unitree_legged_sdk)). A Python binding exists at `unitree_sdk2_python` for lighter scripting. The relevant structs:
+
+- **`LowCmd`** — sent to robot each tick:
+  - `motorCmd[i].q` — desired position
+  - `motorCmd[i].dq` — desired velocity
+  - `motorCmd[i].Kp`, `motorCmd[i].Kd` — PD gains
+  - `motorCmd[i].tau` — feedforward torque
+- **`LowState`** — received from robot each tick:
+  - `motorState[i].q`, `.dq` — measured position and velocity
+  - `motorState[i].tauEst` — estimated torque (from motor current)
+
+Joint index mapping for a single leg (e.g. FR): joints **0, 1, 2** = hip, thigh, calf. All 12 joints are always active in `LowState`; send zero torque/gains on joints you don't want to move.
+
+**Safety**: always start in damping mode (`Kd` only, `Kp=0`), ramp gains slowly, and implement a watchdog that drops back to damping on timeout or joint-limit breach.
+
+---
+
+### 1. Friction ID on Real Robot
+
+**Data collection** (replaces `sysid_trajectory_generator.py --mode friction`):
+
+Write a C++ or Python control loop at 500 Hz that:
+1. Sends the same sinusoidal `q_des(t)` via `LowCmd` with the same PD gains used in simulation (`Kp`, `Kd` from `sysid_trajectory_generator.py`)
+2. Reads back `LowState` and logs `[t, q(3), qd(3), tauEst(3)]` to a CSV each tick
+3. After the run, downsample and compute `q̈` by central difference + the same Butterworth filter
+
+The recorded CSV then feeds directly into the existing C++ friction solver — no changes needed.
+
+**Key differences from simulation to watch for:**
+- `tauEst` is derived from motor current and has more noise than simulation; may need heavier filtering or the offset term `β` (`include_offset_input = true` in `TestFrictionParametersIdentification.cpp`) to absorb torque sensor bias
+- Real joint friction is temperature-dependent; run ID after the robot has warmed up
+
+**Validation** (same as simulation):
+Run `sysid_comparison.py --mode friction` — but now feed it real recorded trajectories instead of simulated ones for the PD tracking comparison, or just use the sim comparison to sanity-check the solver output against true Go1 params.
+
+---
+
+### 2. Inertial ID on Real Robot
+
+**Step 1 — exciting trajectory** is unchanged: `./Go1_exciting_traj 1 FR` runs offline and outputs `exciting-trajectory-1.csv`. No robot needed.
+
+**Step 2 — data collection** (replaces `sysid_trajectory_generator.py --mode inertial`):
+
+Write a 500 Hz loop that:
+1. Reads `[t, q_des(t), qd_des(t), tau_ff(t)]` from `exciting-trajectory-1.csv`
+2. Sends PD + feedforward: `tau = Kp*(q_des-q) + Kd*(qd_des-qd) + tau_ff`
+3. Logs `[t, q(3), qd(3), tauEst(3)]` each tick
+
+Post-process identical to simulation: central-difference `q̈` + Butterworth filter → `traj_data_<ts>.csv`, `acceleration_<ts>.csv`.
+
+> **Preferred alternative**: use `Go1_SysidInertialMomentum_test` (momentum-based solver) which avoids `q̈` entirely. It requires only `[q, qd, tau]` — no numerical differentiation, no filtering choice to tune. Better suited for hardware where `q̈` is noisy.
+
+**Step 3 — solver** is unchanged: `./Go1_SysidInertial_test FR <data_ts> <friction_ts>` (IIDD) or `./Go1_SysidInertialMomentum_test` (momentum).
+
+**Validation**:
+The same `sysid_comparison.py --mode inertial` can be used with the hardware-identified parameters to check controller quality in simulation. For on-robot validation, replay a hold-out trajectory via the 500 Hz loop and compare commanded vs measured joint positions — same three-controller structure (True / Estimated / Noisy) applies directly.
