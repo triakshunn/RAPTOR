@@ -1,3 +1,6 @@
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 #include "FrictionParametersIdentification.h"
 
 #include "pinocchio/algorithm/joint-configuration.hpp"
@@ -6,14 +9,20 @@
 using namespace RAPTOR;
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    std::cerr
-        << "Error: No arguments provided. please choose the downsampled file"
-        << std::endl;
+  if (argc < 3) {
+    std::cerr << "Usage: ./Go1_SysidFriction_test <leg> <timestamp>\n"
+              << "  e.g. ./Go1_SysidFriction_test FR 20250707_1430" << std::endl;
     return 1;
   }
-  // Initialize model
-  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf"; // since c++ runs from build folder
+  const std::string leg     = std::string(argv[1]);
+  const std::string data_ts = std::string(argv[2]);
+
+  std::time_t t_now = std::time(nullptr);
+  std::ostringstream oss;
+  oss << std::put_time(std::localtime(&t_now), "%Y%m%d_%H%M");
+  const std::string run_ts = oss.str();
+
+  const std::string urdf_filename = "../Robots/unitree-go1/go1_" + leg + ".urdf";
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
   pinocchio::Data data(model);
@@ -24,22 +33,14 @@ int main(int argc, char *argv[]) {
 
   // Initialize data
   bool include_offset_input = false;
-  const std::string posFile =
+  const std::string data_dir =
       "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/gains/60_3/q_downsampled_filtered_" +
-      std::string(argv[1]) + ".csv";
-  const std::string velFile =
-      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/gains/60_3/q_d_downsampled_filtered_" +
-      std::string(argv[1]) + ".csv";
-  const std::string accFile =
-      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/gains/60_3/q_dd_downsampled_filtered_" +
-      std::string(argv[1]) + ".csv";
-  const std::string torqueFile =
-      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-      "full_params_data/gains/60_3/tau_downsampled_filtered_" +
-      std::string(argv[1]) + ".csv";
+      "full_params_data/friction/" + leg + "/";
+
+  const std::string posFile    = data_dir + "q_downsampled_"    + data_ts + ".csv";
+  const std::string velFile    = data_dir + "q_d_downsampled_"  + data_ts + ".csv";
+  const std::string accFile    = data_dir + "q_dd_downsampled_" + data_ts + ".csv";
+  const std::string torqueFile = data_dir + "tau_downsampled_"  + data_ts + ".csv";
 
   Eigen::MatrixXd posData = Utils::initializeEigenMatrixFromFile(posFile);
   Eigen::MatrixXd velData = Utils::initializeEigenMatrixFromFile(velFile);
@@ -114,10 +115,8 @@ int main(int argc, char *argv[]) {
               << std::endl;
 
     // Write the friction parameters into the file
-    const std::string outputfolder =
-        "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/full_params_data/gains/60_3/";
-    std::ofstream solution(outputfolder + "friction_parameters_solution_filtered_" +
-                           std::string(argv[1]) + ".csv");
+    std::ofstream solution(data_dir + "friction_parameters_solution_" + run_ts + ".csv");
+    std::cout << "Solution saved: " << data_dir + "friction_parameters_solution_" + run_ts + ".csv\n";
 
     solution << std::setprecision(16);
     for (int i = 0; i < mynlp->solution.size(); i++) {
@@ -150,11 +149,7 @@ int main(int argc, char *argv[]) {
       tau_inertials.col(i) = data.tau;
     }
 
-    const std::string outputfolder1 =
-        "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
-        "full_params_data/low_gains/";
-    std::ofstream estimate_tau(outputfolder1 + "friction_estimate_tau_" +
-                               std::string(argv[1]) + ".csv");
+    std::ofstream estimate_tau(data_dir + "friction_estimate_tau_" + run_ts + ".csv");
 
     for (Index i = 0; i < N; i++) {
       const Eigen::VectorXd &q_d = velDataPtr_->col(i);

@@ -1,3 +1,4 @@
+from datetime import datetime
 import numpy as np
 import pinocchio as pin
 import scipy.io as sio
@@ -303,6 +304,7 @@ def main():
     """Main simulation pipeline."""
     args = parse_args()
     leg=args.leg
+    run_ts = datetime.now().strftime("%Y%m%d_%H%M")
 
     print(f"Mode: {args.mode}, Leg: {args.leg}")
     if args.mode == 'inertial':
@@ -357,7 +359,7 @@ def main():
     # All 3 joints are active (list [0,1,2])
     qs, vs, taus = integrate(
         model, ts, x0, traj_fn, ctrl_fn,
-        [0, 1, 2], FC_TRUE, FV_TRUE, IA_TRUE
+        FC_TRUE, FV_TRUE, IA_TRUE
     )
     print(f"✓ Simulation complete: {len(ts)} timesteps")
 
@@ -403,15 +405,16 @@ def main():
 
     if args.mode == 'inertial':
         traj_data = np.column_stack([ts_out, qs_out, vs_out, taus_out])
-        np.savetxt(os.path.join(out_dir, "traj_data.csv"),    traj_data, delimiter=" ")
-        np.savetxt(os.path.join(out_dir, "acceleration.csv"), accs_out,  delimiter=" ")
-        print(f"Saved to: {out_dir}")
-    
+        np.savetxt(os.path.join(out_dir, f"traj_data_{run_ts}.csv"),    traj_data, delimiter=" ")
+        np.savetxt(os.path.join(out_dir, f"acceleration_{run_ts}.csv"), accs_out,  delimiter=" ")
+        print(f"Saved to: {out_dir}  [timestamp: {run_ts}]")
+
     else:
-        np.savetxt(os.path.join(out_dir, "q_downsampled.csv"),    qs_out,   delimiter=" ")
-        np.savetxt(os.path.join(out_dir, "q_d_downsampled.csv"),  vs_out,   delimiter=" ")
-        np.savetxt(os.path.join(out_dir, "q_dd_downsampled.csv"), accs_out, delimiter=" ")
-        np.savetxt(os.path.join(out_dir, "tau_downsampled.csv"),  taus_out, delimiter=" ")
+        np.savetxt(os.path.join(out_dir, f"q_downsampled_{run_ts}.csv"),    qs_out,   delimiter=" ")
+        np.savetxt(os.path.join(out_dir, f"q_d_downsampled_{run_ts}.csv"),  vs_out,   delimiter=" ")
+        np.savetxt(os.path.join(out_dir, f"q_dd_downsampled_{run_ts}.csv"), accs_out, delimiter=" ")
+        np.savetxt(os.path.join(out_dir, f"tau_downsampled_{run_ts}.csv"),  taus_out, delimiter=" ")
+        print(f"Saved to: {out_dir}  [timestamp: {run_ts}]")
 
     # ── Static sanity check plots: all 12 joints ──────────────────────────
 

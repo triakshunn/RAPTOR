@@ -320,6 +320,41 @@ def set_phi_to_model(model, phi_30):
        I_com = I_origin - m * (np.dot(c, c) * np.eye(3) - np.outer(c, c)) ### Parallel Axis Theorem
        model.inertias[k + 1] = pin.Inertia(m, c, I_com)
 
+def noise_phi_log_chol(phi_urdf, noise=0.20, seed=42):
+   rng = np.random.default_rng(seed=seed)
+   phi_n = phi_urdf.copy()
+   for k in range(3):
+       i = k * 10
+       m = phi_urdf[i]
+       c = phi_urdf[i+1:i+4] / m
+       Ixx, Ixy, Iyy, Ixz, Iyz, Izz = phi_urdf[i+4:i+10]
+       I_orig = np.array([[Ixx, Ixy, Ixz],
+                          [Ixy, Iyy, Iyz],
+                          [Ixz, Iyz, Izz]])
+       I_com = I_orig - m * (np.dot(c, c) * np.eye(3) - np.outer(c, c))
+       L = np.linalg.cholesky(I_com)
+       s = rng.choice([-1, 1], size=6)
+       L_n = L.copy()
+       L_n[0,0] = np.exp(np.log(L[0,0]) * (1 + s[0]*noise))
+       L_n[1,1] = np.exp(np.log(L[1,1]) * (1 + s[1]*noise))
+       L_n[2,2] = np.exp(np.log(L[2,2]) * (1 + s[2]*noise))
+       L_n[1,0] = L[1,0] * (1 + s[3]*noise)
+       L_n[2,0] = L[2,0] * (1 + s[4]*noise)
+       L_n[2,1] = L[2,1] * (1 + s[5]*noise)
+       I_com_n = L_n @ L_n.T
+       m_n = m * (1 + rng.choice([-1, 1]) * noise)
+       c_n = c * (1 + rng.choice([-1, 1], size=3) * noise)
+       I_orig_n = I_com_n + m_n * (np.dot(c_n, c_n) * np.eye(3) - np.outer(c_n, c_n))
+       phi_n[i]       = m_n
+       phi_n[i+1:i+4] = m_n * c_n
+       phi_n[i+4]     = I_orig_n[0,0]
+       phi_n[i+5]     = I_orig_n[0,1]
+       phi_n[i+6]     = I_orig_n[1,1]
+       phi_n[i+7]     = I_orig_n[0,2]
+       phi_n[i+8]     = I_orig_n[1,2]
+       phi_n[i+9]     = I_orig_n[2,2]
+   return phi_n
+
 def print_metrics_table(results):
     """
     Print a formatted summary table of tracking error metrics for all simulated joints.
@@ -422,6 +457,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=['friction', 'inertial'], required=True) ### inertial mode has two branches, if friction solution exists, then inertial+friction else only inertial
     parser.add_argument('--leg',  choices=['FR', 'FL', 'RR', 'RL'], nargs='+', required=True)
+    parser.add_argument('--friction-csv', type=str, default=None,
+                        help='Path to friction_parameters_solution_<ts>.csv')
+    parser.add_argument('--inertial-csv', type=str, default=None,
+                        help='Path to inertial_parameters_solution_<ts>.csv (inertial mode only)')
     args = parser.parse_args()
     current_dir   = os.path.dirname(os.path.abspath(__file__))
     sysid_dir     = os.path.abspath(os.path.join(current_dir, "../SystemIdentification/ParametersIdentification/full_params_data"))
@@ -502,8 +541,9 @@ def main():
         if args.mode=="friction":
 
 
-            friction_csv = os.path.join(sysid_dir, f"friction/{LEG_NAME}/friction_parameters_solution.csv")
-            fp = np.loadtxt(friction_csv)   # [Fc(3), Fv(3), Ia(3)]
+            if args.friction_csv is None:
+                raise ValueError("--friction-csv required for friction mode")
+            fp = np.loadtxt(args.friction_csv)
             Fc_estimated = fp[0:3]
             Fv_estimated = fp[3:6]
             Ia_estimated = fp[6:9]
@@ -530,21 +570,19 @@ def main():
         
         else: 
 
-            friction_csv = os.path.join(sysid_dir, f"friction/{LEG_NAME}/friction_parameters_solution.csv")
-            if os.path.exists(friction_csv):
-               fp = np.loadtxt(friction_csv)
+            if args.friction_csv is not None:
+               fp = np.loadtxt(args.friction_csv)
                Fc_estimated[:] = fp[0:3]; Fv_estimated[:] = fp[3:6]; Ia_estimated[:] = fp[6:9]
                ## Noisy friction parameters for result validation (20% noise)
                Fc_noise[0:3] = Fc_true[0:3]+[Fc_true[0]*0.20,-Fc_true[1]*0.2,Fc_true[2]*0.2]   # Coulomb friction (N·m)
                Fv_noise[0:3] = Fv_true[0:3]+[-Fv_true[0]*0.20,-Fv_true[1]*0.20,Fv_true[2]*0.2]   # Viscous damping (N·m·s/rad)
                Ia_noise[0:3] = Ia_true[0:3]+[Ia_true[0]*0.20,Ia_true[1]*0.20,-Ia_true[2]*0.2] # Armature inertia (kg·m²)
-    
 
-            inertial_csv = os.path.join(sysid_dir, f"inertial/{LEG_NAME}/inertial_parameters_solution.csv")
-            phi_estimated = np.loadtxt(inertial_csv, delimiter=',').flatten()
+            if args.inertial_csv is None:
+                raise ValueError("--inertial-csv required for inertial mode")
+            phi_estimated = np.loadtxt(args.inertial_csv, delimiter=',').flatten()
             phi_urdf = get_phi_from_model(model)
-            rng = np.random.default_rng(seed=42)
-            phi_noise = phi_urdf * (1.0 + rng.choice([-1, 1], size=30) * 0.20) ### 20% noise
+            phi_noise = noise_phi_log_chol(phi_urdf, noise=0.20, seed=42)
             print(f"True Fc={Fc_estimated}  Fv={Fv_estimated}  Ia={Ia_estimated}")
             print(f" URDF inertial params: {phi_urdf}")
             print(f"Loaded inertial params: {phi_estimated}")
@@ -606,7 +644,7 @@ def main():
                 Fc_ctrl=Fc_true, Fv_ctrl=Fv_true)
 
             # Estimated controller — uses identified friction params
-            if os.path.exists(friction_csv):
+            if args.friction_csv is not None:
 
                 model_esti.armature = Ia_estimated 
                 set_phi_to_model(model_esti, phi_estimated)
@@ -628,7 +666,7 @@ def main():
             # Noisy controller — uses noisy friction params
             
 
-            if os.path.exists(friction_csv):
+            if args.friction_csv is not None:
                 model_noise.armature = Ia_noise 
                 set_phi_to_model(model_noise, phi_noise)
                 data_noise = model_noise.createData()

@@ -1,5 +1,8 @@
 #include "EndEffectorParametersIdentification.h"
 #include <fstream>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 
 using namespace RAPTOR;
@@ -15,16 +18,22 @@ int main(int argc, char* argv[]) {
 
   
 
-    if (argc < 2) {
-         throw std::invalid_argument(
-             "Usage: ./Go1_SysidInertial_test FR [FL RR RL ...]");
-     }
-    
+    if (argc < 4) {
+        throw std::invalid_argument(
+            "Usage: ./Go1_SysidInertial_test <leg> <data_ts> <friction_ts>\n"
+            "  e.g. ./Go1_SysidInertial_test FR 20250707_1430 20250707_1432");
+    }
 
-     for (int leg_idx = 1; leg_idx < argc; leg_idx++) {
+    const std::string leg         = std::string(argv[1]);
+    const std::string data_ts     = std::string(argv[2]);
+    const std::string friction_ts = std::string(argv[3]);
 
-        const std::string leg = std::string(argv[leg_idx]);
-        std::cout << "\n=== Processing leg: " << leg << " ===\n";
+    std::time_t t_now = std::time(nullptr);
+    std::ostringstream oss;
+    oss << std::put_time(std::localtime(&t_now), "%Y%m%d_%H%M");
+    const std::string run_ts = oss.str();
+
+    std::cout << "\n=== Processing leg: " << leg << " ===\n";
 
         pinocchio::Model model;
         pinocchio::urdf::buildModel(
@@ -32,7 +41,7 @@ int main(int argc, char* argv[]) {
         pinocchio::Data data(model);
 
         const std::string friction_file =
-            folder_name + "friction/" + leg + "/friction_parameters_solution.csv";
+            folder_name + "friction/" + leg + "/friction_parameters_solution_" + friction_ts + ".csv";
         
         Eigen::VectorXd fp =
              Utils::initializeEigenMatrixFromFile(friction_file).col(0);
@@ -89,9 +98,9 @@ int main(int argc, char* argv[]) {
             auto start = std::chrono::high_resolution_clock::now();
             mynlp->set_parameters(model, offset, 1e-6); 
             mynlp->add_trajectory_file(
-                data_dir + "traj_data.csv",
-                data_dir + "acceleration.csv",
-                 TimeFormat::Second);
+                data_dir + "traj_data_"    + data_ts + ".csv",
+                data_dir + "acceleration_" + data_ts + ".csv",
+                TimeFormat::Second);
             auto end = std::chrono::high_resolution_clock::now();
             setup_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
             std::cout << "Setup time: " << setup_time << " milliseconds.\n";
@@ -149,12 +158,12 @@ int main(int argc, char* argv[]) {
         std::cout << "parameter solution: " << mynlp->theta_solution.transpose() << "\n";
         std::cout << "groundtruth:        " << mynlp->phi_original.transpose() << "\n";
 
-        const std::string out_path = data_dir + "inertial_parameters_solution.csv";
+        const std::string out_path = data_dir + "inertial_parameters_solution_" + run_ts + ".csv";
         std::ofstream out(out_path);
         for (int i = 0; i < mynlp->theta_solution.size(); i++)
-             out << mynlp->theta_solution(i) << "\n";
+            out << mynlp->theta_solution(i) << (i < mynlp->theta_solution.size() - 1 ? "," : "\n");
+        out.close();
         std::cout << "Results saved to: " << out_path << "\n";
-     }
 
      return 0;
     }
