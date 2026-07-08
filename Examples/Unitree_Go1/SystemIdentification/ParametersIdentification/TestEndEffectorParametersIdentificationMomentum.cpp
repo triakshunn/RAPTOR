@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
     const std::string out_path = data_dir + "inertial_parameters_solution.csv";
     std::ofstream out(out_path);
     for (int i = 0; i < mynlp->theta_solution.size(); i++)
-        out << mynlp->theta_solution(i) << "\n";
+       out << mynlp->theta_solution(i) << (i < mynlp->theta_solution.size() - 1 ? "," : "\n");
     std::cout << "Results saved to: " << out_path << "\n";
             }
 
