@@ -6,9 +6,13 @@ Goal: fix bugs and refactor from old per-joint loop to new per-leg simultaneous 
 
 ---
 
+## Some additional design changes adding:
+1. I plan to change this to be a single file to compare trajectories. same mode based architecture as for trajectory generation. --friction and I use the 3 friction params for 3 joints to do trajectory comparison. --inertial and use the 30 estimated vs real parameters. same reference trajectory can be used for comparison. for friction(ground truth, estimated, noise) and for inertial(ground truth (urdf here), estimated, noise) for comparison. should save these plots in a dir.
+
+
 ## Bugs (fix first)
 
-### Bug 1 — Hard crash: wrong `verify_trajectory_safety` call (L560)
+### Bug 1 — Hard crash: wrong `verify_trajectory_safety` call (L560) [Yes lets do it]
 
 Function signature (L50): `verify_trajectory_safety(traj_fn, ctrl_fn, ts, model, margin=0.05)`
 
@@ -20,7 +24,7 @@ Fix: pass `ctrl_fn_true` as second arg (or `None` to skip torque check):
 +    verify_trajectory_safety(traj_fn, ctrl_fn_true, ts_sim, model, margin=0.05)
 ```
 
-### Bug 2 — Shallow copy in `butterworth_lowpass_filter` (L289)
+### Bug 2 — Shallow copy in `butterworth_lowpass_filter` (L289) (Okay)
 
 ```diff
 -    data_filtered = data
@@ -30,7 +34,7 @@ Without `.copy()`, the function modifies the input array in-place and `data_filt
 
 ---
 
-## Design Issues (refactor)
+## Design Issues (refactor) (yes this is fine)
 
 | # | Line | Issue |
 |---|------|-------|
