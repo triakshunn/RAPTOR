@@ -1,11 +1,11 @@
-#include "Go1Constants.h"
+#include "Go2Constants.h"
 #include "PayloadExcitingTrajectoryGenerator.h"
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 
 using namespace RAPTOR;
-using namespace Go1;
+using namespace Go2;
 using namespace Ipopt;
 
 int main(int argc, char *argv[]) {
@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
   const std::string leg =
       (argc > 2) ? std::string(argv[2]) : "FR"; // FR is default here ig
   const std::string urdf_filename =
-      "../Robots/unitree-go1/go1_" + leg + ".urdf";
+      "../Robots/unitree-go2/go2_" + leg + ".urdf";
 
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
 
     if (argc > 1) {
       const std::string outputfolder =
-          "../Examples/Unitree_Go1/SystemIdentification/ExcitingTrajectories/"
+          "../Examples/Unitree_Go2/SystemIdentification/ExcitingTrajectories/"
           "data/" +
           leg + "/";
       std::ofstream solution(outputfolder + "exciting-solution-" +

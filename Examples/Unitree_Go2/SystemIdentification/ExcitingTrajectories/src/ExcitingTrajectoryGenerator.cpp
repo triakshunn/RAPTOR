@@ -1,7 +1,7 @@
 #include "ExcitingTrajectoryGenerator.h"
-#include "Go1Constants.h"
+#include "Go2Constants.h"
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 using RAPTOR::Kinova::KinovaCustomizedConstraints;
 // // constructor
 // ExcitingTrajectoryGenerator::ExcitingTrajectoryGenerator()
@@ -48,7 +48,7 @@ bool ExcitingTrajectoryGenerator::set_parameters(
   Y_independent.resize(ridPtr_->Y.rows(), independent_param_inds.size());
   pY_independent_pz.resize(ridPtr_->Y.rows(), independent_param_inds.size());
 
-  // read joint limits from Go1Constants.h
+  // read joint limits from Go2Constants.h
   VecX JOINT_LIMITS_LOWER_VEC =
       Utils::deg2rad(Utils::initializeEigenVectorFromArray(JOINT_LIMITS_LOWER,
                                                            NUM_JOINTS)) +
@@ -59,13 +59,13 @@ bool ExcitingTrajectoryGenerator::set_parameters(
                                                            NUM_JOINTS)) -
       joint_limits_buffer_input;
 
-  // read velocity limits from Go1Constants.h
+  // read velocity limits from Go2Constants.h
   VecX VELOCITY_LIMITS_LOWER_VEC =
       Utils::deg2rad(Utils::initializeEigenVectorFromArray(
           VELOCITY_LIMITS_LOWER, NUM_JOINTS)) +
       velocity_limits_buffer_input;
 
-  // read acceleration limits from Go1Constants.h
+  // read acceleration limits from Go2Constants.h
   VecX ACCELERATION_LIMITS_LOWER_VEC =
       Utils::deg2rad(Utils::initializeEigenVectorFromArray(
           ACCELERATION_LIMITS_LOWER, NUM_JOINTS));
@@ -78,7 +78,7 @@ bool ExcitingTrajectoryGenerator::set_parameters(
           VELOCITY_LIMITS_UPPER, NUM_JOINTS)) -
       velocity_limits_buffer_input;
 
-  // read torque limits from Go1Constants.h
+  // read torque limits from Go2Constants.h
   VecX TORQUE_LIMITS_LOWER_VEC =
       Utils::initializeEigenVectorFromArray(TORQUE_LIMITS_LOWER, NUM_JOINTS) +
       torque_limits_buffer_input;
@@ -226,5 +226,5 @@ bool ExcitingTrajectoryGenerator::eval_grad_f(Index n, const Number *x,
   return true;
 }
 
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR

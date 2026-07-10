@@ -1,7 +1,7 @@
 #include "PZSparse.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 using namespace boost::multiprecision;
@@ -1162,5 +1162,5 @@ PZSparse atan2(const PZSparse& y, const PZSparse& x) {
 }
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR

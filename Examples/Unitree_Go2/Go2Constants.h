@@ -1,9 +1,9 @@
-/// TODO: Values not verified.
-#ifndef GO1_CONSTANTS_H
-#define GO1_CONSTANTS_H
+/// TODO: Values not changed for Go2 specific to do
+#ifndef GO2_CONSTANTS_H
+#define GO2_CONSTANTS_H
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 
 constexpr int NUM_JOINTS = 3;
 
@@ -67,7 +67,7 @@ constexpr double PRONE_POSITIONS[NUM_JOINTS] = {
     -2.8, // FR
 };
 
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
-#endif // GO1_CONSTANTS_H
+#endif // GO2_CONSTANTS_H

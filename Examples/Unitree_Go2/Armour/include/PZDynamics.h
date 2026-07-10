@@ -10,7 +10,7 @@
 #include "ParameterizedTrajectory.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 constexpr size_t FRICTION_CONE_LINEARIZED_SIZE = 8;
@@ -67,7 +67,7 @@ public:
 };
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif

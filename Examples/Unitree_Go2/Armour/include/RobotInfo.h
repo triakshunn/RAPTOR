@@ -4,7 +4,7 @@
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 
-#include "Go1Constants.h"
+#include "Go2Constants.h"
 
 #include "PZSparse.h"
 
@@ -12,7 +12,7 @@
 #include <yaml-cpp/yaml.h>
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 struct ultimate_bound {
@@ -104,7 +104,7 @@ public:
 };
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // ROBOTINFO_H

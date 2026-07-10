@@ -4,7 +4,7 @@
 #include "ArmourHeaders.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 using namespace boost::multiprecision;
@@ -181,28 +181,28 @@ PZSparse cos(const PZSparse& a);
 PZSparse atan2(const PZSparse& y, const PZSparse& x);
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 // define numeric_limits for PZSparse
 namespace std {
     template<>
-    class numeric_limits<RAPTOR::Go1::Armour::PZSparse> {
+    class numeric_limits<RAPTOR::Go2::Armour::PZSparse> {
     public:
         static constexpr bool is_specialized = true;
         static constexpr bool is_signed = true;
         static constexpr bool is_integer = false;
-        static RAPTOR::Go1::Armour::PZSparse min() noexcept {
-            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::min());
+        static RAPTOR::Go2::Armour::PZSparse min() noexcept {
+            return RAPTOR::Go2::Armour::PZSparse(numeric_limits<double>::min());
         }
-        static RAPTOR::Go1::Armour::PZSparse max() noexcept {
-            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::max());
+        static RAPTOR::Go2::Armour::PZSparse max() noexcept {
+            return RAPTOR::Go2::Armour::PZSparse(numeric_limits<double>::max());
         }
-        static RAPTOR::Go1::Armour::PZSparse lowest() noexcept {
-            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::lowest());
+        static RAPTOR::Go2::Armour::PZSparse lowest() noexcept {
+            return RAPTOR::Go2::Armour::PZSparse(numeric_limits<double>::lowest());
         }
-        static RAPTOR::Go1::Armour::PZSparse epsilon() noexcept {
-            return RAPTOR::Go1::Armour::PZSparse(numeric_limits<double>::epsilon());
+        static RAPTOR::Go2::Armour::PZSparse epsilon() noexcept {
+            return RAPTOR::Go2::Armour::PZSparse(numeric_limits<double>::epsilon());
         }
     };
 }; // namespace std

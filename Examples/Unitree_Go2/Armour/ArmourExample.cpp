@@ -1,7 +1,7 @@
 #include "ArmourOptimizer.h"
 
 using namespace RAPTOR;
-using namespace Go1;
+using namespace Go2;
 using namespace Armour;
 
 int main() {
@@ -91,7 +91,7 @@ int main() {
                              /// need to think how this will translate for our
                              /// problem?
   // for the four legs no contact constraint, no obstacle constraints, only
-  // torque limits and joint limits? only for the base link (the abdomen of go1)
+  // torque limits and joint limits? only for the base link (the abdomen of Go2)
   // we need to add some contact constraints with the environment for the base
   // of the robot, like the leg contact forces.
 

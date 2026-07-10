@@ -1,5 +1,5 @@
-# Go1 SysID library — only the source files actually needed
-add_library(Go1lib SHARED
+# Go2 SysID library — only the source files actually needed
+add_library(Go2lib SHARED
     SystemIdentification/ParametersIdentification/src/FrictionParametersIdentification.cpp
     SystemIdentification/ParametersIdentification/src/EndEffectorParametersIdentification.cpp
     SystemIdentification/ParametersIdentification/src/EndEffectorParametersIdentificationMomentum.cpp
@@ -7,7 +7,7 @@ add_library(Go1lib SHARED
     SystemIdentification/ExcitingTrajectories/src/ExcitingTrajectoryGenerator.cpp
     CollisionAvoidanceTrajectory/src/KinovaCustomizedConstraints.cpp) 
 
-target_include_directories(Go1lib PUBLIC
+target_include_directories(Go2lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include
@@ -20,7 +20,7 @@ target_include_directories(Go1lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/CollisionAvoidanceTrajectory/include
 )
 
-target_link_libraries(Go1lib PUBLIC
+target_link_libraries(Go2lib PUBLIC
     trajlib
     IDlib
     Costslib
@@ -33,86 +33,85 @@ target_link_libraries(Go1lib PUBLIC
 )
 
 ###
-add_executable(Go1_SysidFriction_test
+add_executable(Go2_SysidFriction_test
     SystemIdentification/ParametersIdentification/TestFrictionParametersIdentification.cpp)
-target_include_directories(Go1_SysidFriction_test PUBLIC
+target_include_directories(Go2_SysidFriction_test PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include)
-target_link_libraries(Go1_SysidFriction_test PUBLIC
+target_link_libraries(Go2_SysidFriction_test PUBLIC
     trajlib
     IDlib
     Conslib
     Optlib
-    Go1lib
+    Go2lib
     ipopt
     coinhsl
     ${Boost_LIBRARIES}
     pinocchio::pinocchio)
-target_compile_options(Go1_SysidFriction_test PUBLIC
+target_compile_options(Go2_SysidFriction_test PUBLIC
     ${PINOCCHIO_FLAGS})
 
-
-add_executable(Go1_SysidInertial_test
+add_executable(Go2_SysidInertial_test
     SystemIdentification/ParametersIdentification/TestEndEffectorParametersIdentification.cpp)
-target_include_directories(Go1_SysidInertial_test PUBLIC
+target_include_directories(Go2_SysidInertial_test PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include)
-target_link_libraries(Go1_SysidInertial_test PUBLIC
+target_link_libraries(Go2_SysidInertial_test PUBLIC
     trajlib
     IDlib
     Conslib
     Optlib
-    Go1lib
+    Go2lib
     ipopt
     coinhsl
     ${Boost_LIBRARIES}
     pinocchio::pinocchio)
-target_compile_options(Go1_SysidInertial_test PUBLIC
+target_compile_options(Go2_SysidInertial_test PUBLIC
     ${PINOCCHIO_FLAGS})
 
-add_executable(Go1_SysidInertialMomentum_test
+add_executable(Go2_SysidInertialMomentum_test
     SystemIdentification/ParametersIdentification/TestEndEffectorParametersIdentificationMomentum.cpp)
-target_include_directories(Go1_SysidInertialMomentum_test PUBLIC
+target_include_directories(Go2_SysidInertialMomentum_test PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ParametersIdentification/include)
-target_link_libraries(Go1_SysidInertialMomentum_test PUBLIC
+target_link_libraries(Go2_SysidInertialMomentum_test PUBLIC
     trajlib
     IDlib
     Conslib
     Optlib
-    Go1lib
+    Go2lib
     ipopt
     coinhsl
     ${Boost_LIBRARIES}
     pinocchio::pinocchio)
-target_compile_options(Go1_SysidInertialMomentum_test PUBLIC
+target_compile_options(Go2_SysidInertialMomentum_test PUBLIC
     ${PINOCCHIO_FLAGS})
 
 
-add_executable(Go1_exciting_traj
-    SystemIdentification/ExcitingTrajectories/Go1_RegressorExample.cpp)
-target_include_directories(Go1_exciting_traj PUBLIC
+add_executable(Go2_exciting_traj
+    SystemIdentification/ExcitingTrajectories/Go2_RegressorExample.cpp)
+target_include_directories(Go2_exciting_traj PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include)
-target_link_libraries(Go1_exciting_traj PUBLIC
+target_link_libraries(Go2_exciting_traj PUBLIC
     trajlib
     IDlib
     Conslib
     Optlib
-    Go1lib
+    Go2lib
     ipopt
     coinhsl
     ${Boost_LIBRARIES}
     pinocchio::pinocchio)
-target_compile_options(Go1_exciting_traj PUBLIC
+target_compile_options(Go2_exciting_traj PUBLIC
     ${PINOCCHIO_FLAGS})
 
 # ==============================================================================
-# Go1 Armour
+# Go2 Armour
 # ==============================================================================
 
 # 1. The library
-add_library(Go1Armourlib SHARED
+add_library(Go2Armourlib SHARED
     Armour/src/PZSparse.cpp
     Armour/src/RobotInfo.cpp
     Armour/src/ParameterizedTrajectory.cpp
@@ -122,7 +121,7 @@ add_library(Go1Armourlib SHARED
     SystemIdentification/ExcitingTrajectories/src/SafePayloadExcitingTrajectoryGenerator.cpp
 )
 
-target_include_directories(Go1Armourlib PUBLIC
+target_include_directories(Go2Armourlib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/Armour/include
     ${CMAKE_SOURCE_DIR}/Trajectories/include
@@ -133,7 +132,7 @@ target_include_directories(Go1Armourlib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemIdentification/ExcitingTrajectories/include
 )
 
-target_link_libraries(Go1Armourlib PUBLIC
+target_link_libraries(Go2Armourlib PUBLIC
     trajlib
     IDlib
     Conslib
@@ -147,69 +146,69 @@ target_link_libraries(Go1Armourlib PUBLIC
 )
 
 # 2. The single executable example
-add_executable(Go1Armour_example 
+add_executable(Go2Armour_example 
     Armour/ArmourExample.cpp)
-target_include_directories(Go1Armour_example PUBLIC
+target_include_directories(Go2Armour_example PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Armour/include)
-target_link_libraries(Go1Armour_example PUBLIC
+target_link_libraries(Go2Armour_example PUBLIC
     trajlib 
     IDlib
     Conslib
     Optlib
-    Go1Armourlib
+    Go2Armourlib
     ipopt
     coinhsl
     ${BOOST_LIBRARIES} 
     pinocchio::pinocchio)
-target_compile_options(Go1Armour_example PUBLIC
+target_compile_options(Go2Armour_example PUBLIC
     ${PINOCCHIO_FLAGS})
 
 # 3. The dual example
-add_executable(Go1DualArmour_example 
+add_executable(Go2DualArmour_example 
     Armour/DualArmourExample.cpp)
-target_include_directories(Go1DualArmour_example PUBLIC
+target_include_directories(Go2DualArmour_example PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Armour/include)
-target_link_libraries(Go1DualArmour_example PUBLIC
+target_link_libraries(Go2DualArmour_example PUBLIC
     trajlib 
     IDlib
     Conslib
     Optlib
-    Go1Armourlib
+    Go2Armourlib
     ipopt
     coinhsl
     ${BOOST_LIBRARIES} 
     pinocchio::pinocchio)
-target_compile_options(Go1DualArmour_example PUBLIC
+target_compile_options(Go2DualArmour_example PUBLIC
     ${PINOCCHIO_FLAGS})
 
 # ==============================================================================
-# Go1 Armour Python Bindings (Nanobind)
+# Go2 Armour Python Bindings (Nanobind)
 # ==============================================================================
 # 1. Single Armour module
-nanobind_add_module(go1_armour_nanobind 
+nanobind_add_module(Go2_armour_nanobind 
     NB_SHARED LTO
     Armour/ArmourPybind.cpp
     Armour/src/ArmourPybindWrapper.cpp)
-target_include_directories(go1_armour_nanobind PUBLIC
+target_include_directories(Go2_armour_nanobind PUBLIC
     Armour/include)
-target_link_libraries(go1_armour_nanobind PUBLIC
-    Go1lib
-    Go1Armourlib
+target_link_libraries(Go2_armour_nanobind PUBLIC
+    Go2lib
+    Go2Armourlib
     ${PYTHON_LIBRARIES})
-nanobind_compile_options(go1_armour_nanobind PUBLIC
+nanobind_compile_options(Go2_armour_nanobind PUBLIC
     ${PINOCCHIO_FLAGS})
-set_property(TARGET go1_armour_nanobind PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET Go2_armour_nanobind PROPERTY POSITION_INDEPENDENT_CODE ON)
 # 2. Dual Armour module
-nanobind_add_module(go1_dualarmour_nanobind 
+nanobind_add_module(Go2_dualarmour_nanobind 
     NB_SHARED LTO
     Armour/DualArmourPybind.cpp
     Armour/src/DualArmourPybindWrapper.cpp)
-target_include_directories(go1_dualarmour_nanobind PUBLIC
+target_include_directories(Go2_dualarmour_nanobind PUBLIC
     Armour/include)
-target_link_libraries(go1_dualarmour_nanobind PUBLIC
-    Go1lib
-    Go1Armourlib
+target_link_libraries(Go2_dualarmour_nanobind PUBLIC
+    Go2lib
+    Go2Armourlib
     ${PYTHON_LIBRARIES})
-nanobind_compile_options(go1_dualarmour_nanobind PUBLIC
+nanobind_compile_options(Go2_dualarmour_nanobind PUBLIC
     ${PINOCCHIO_FLAGS})
-set_property(TARGET go1_dualarmour_nanobind PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET Go2_dualarmour_nanobind PROPERTY POSITION_INDEPENDENT_CODE ON)

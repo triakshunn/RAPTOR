@@ -1,7 +1,7 @@
 #include "ArmourOptimizer.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 bool ArmourOptimizer::set_parameters(
@@ -897,5 +897,5 @@ void ArmourOptimizer::summarize_constraints(
 }
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR

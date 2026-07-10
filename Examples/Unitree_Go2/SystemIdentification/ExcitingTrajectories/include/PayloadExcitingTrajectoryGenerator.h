@@ -1,7 +1,7 @@
 #ifndef CONDITION_NUMBER_OPTIMIZER_H
 #define CONDITION_NUMBER_OPTIMIZER_H
 
-#include "Go1Constants.h"
+#include "Go2Constants.h"
 
 #include "Optimizer.h"
 
@@ -18,7 +18,7 @@
 #include "VelocityLimits.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 
 class PayloadExcitingTrajectoryGenerator : public Optimizer {
 public:
@@ -76,7 +76,7 @@ public:
   std::shared_ptr<RegressorInverseDynamics> ridPtr_;
 };
 
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // CONDITION_NUMBER_OPTIMIZER_H

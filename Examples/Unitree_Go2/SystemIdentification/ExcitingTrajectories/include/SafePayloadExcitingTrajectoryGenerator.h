@@ -10,7 +10,7 @@
 #include "MomentumRegressor.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 class SafePayloadExcitingTrajectoryGenerator : public Optimizer {
@@ -156,7 +156,7 @@ public:
 };
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // ARMOUR_OPTIMIZER_H

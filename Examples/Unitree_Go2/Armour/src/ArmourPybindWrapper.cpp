@@ -1,7 +1,7 @@
 #include "ArmourPybindWrapper.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 ArmourPybindWrapper::ArmourPybindWrapper(const std::string urdf_filename,
@@ -479,5 +479,5 @@ void ArmourPybindWrapper::get_trajectory_data(const nb_1d_double time_array,
 }
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR

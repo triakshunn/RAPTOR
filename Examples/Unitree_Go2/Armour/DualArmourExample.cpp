@@ -1,7 +1,7 @@
 #include "DualArmourOptimizer.h"
 
 using namespace RAPTOR;
-using namespace Go1;
+using namespace Go2;
 using namespace Armour;
 
 int main() {

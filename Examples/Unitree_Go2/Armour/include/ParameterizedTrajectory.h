@@ -8,7 +8,7 @@
 #include "Utils.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 constexpr size_t DEFAULT_NUM_TIME_STEPS = 64; // Number of time intervals partitioning the trajectory
@@ -168,7 +168,7 @@ double qd_des_k_indep(double q0, double Tqd0, double TTqdd0, double kc, double s
 double qdd_des_k_indep(double q0, double Tqd0, double TTqdd0, double kc, double s, double duration);
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // PARAMETERIZED_TRAJECTORY_H

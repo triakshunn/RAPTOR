@@ -4,7 +4,7 @@
 #include "ArmourOptimizer.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 class DualArmourOptimizer : public Optimizer {
@@ -149,7 +149,7 @@ public:
 };
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // DUAL_ARMOUR_OPTIMIZER_H

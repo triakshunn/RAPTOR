@@ -8,7 +8,7 @@
 using namespace RAPTOR;
 
 const std::string folder_name =
-    "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
+    "../Examples/Unitree_Go2/SystemIdentification/ParametersIdentification/"
     "full_params_data/";
 
 
@@ -20,8 +20,8 @@ int main(int argc, char* argv[]) {
 
     if (argc < 4) {
         throw std::invalid_argument(
-            "Usage: ./Go1_SysidInertial_test <leg> <data_ts> <friction_ts>\n"
-            "  e.g. ./Go1_SysidInertial_test FR 20250707_1430 20250707_1432");
+            "Usage: ./Go2_SysidInertial_test <leg> <data_ts> <friction_ts>\n"
+            "  e.g. ./Go2_SysidInertial_test FR 20250707_1430 20250707_1432");
     }
 
     const std::string leg         = std::string(argv[1]);
@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
 
         pinocchio::Model model;
         pinocchio::urdf::buildModel(
-             "../Robots/unitree-go1/go1_" + leg + ".urdf", model);
+             "../Robots/unitree-go2/go2_" + leg + ".urdf", model);
         pinocchio::Data data(model);
 
         const std::string friction_file =
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
         if (fp.size() == 4 * model.nv)
         offset = fp.tail(model.nv);
     
-        // // Generate a random trajectory data (Not implementing this for the Go1 sysID)
+        // // Generate a random trajectory data (Not implementing this for the Go2 sysID)
         // const double T = 10.0; // duration of the trajectory
         // const int N = 1000; // number of samples in the data
     

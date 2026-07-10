@@ -1,7 +1,7 @@
 #include "SafePayloadExcitingPybindWrapper.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 SafePayloadExcitingPybindWrapper::SafePayloadExcitingPybindWrapper(const std::string urdf_filename,

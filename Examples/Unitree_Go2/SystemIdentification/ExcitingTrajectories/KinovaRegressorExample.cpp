@@ -1,12 +1,12 @@
 #include "ExcitingTrajectoryGenerator.h"
 
 using namespace RAPTOR;
-using namespace Go1;
+using namespace Go2;
 using namespace Ipopt;
 
 int main(int argc, char *argv[]) {
   // Define robot model
-  const std::string urdf_filename = "../Robots/unitree-go1/go1.urdf";
+  const std::string urdf_filename = "../Robots/unitree-Go2/go2.urdf";
 
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
   model.damping.setZero();
   model.armature.setZero();
 
-  // Define the indices of identifiable parameters for the Go1 robot, determined
+  // Define the indices of identifiable parameters for the Go2 robot, determined
   // solely by its kinematic model Refer to README on how to get this
   // information for different robots
   Eigen::VectorXi independent_param_inds(43);
@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
   Eigen::VectorXd torque_limits_buffer(model.nq);
   torque_limits_buffer.setConstant(0.5);
 
-  // Initialize Go1 optimizer
+  // Initialize Go2 optimizer
   SmartPtr<ExcitingTrajectoryGenerator> mynlp =
       new ExcitingTrajectoryGenerator();
   try {
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     rid->compute(mynlp->solution, false);
 
     if (argc > 1) {
-      const std::string outputfolder = "../Examples/Go1/SystemIdentification/"
+      const std::string outputfolder = "../Examples/Go2/SystemIdentification/"
                                        "ExcitingTrajectories/data/T10_d3/";
       std::ofstream solution(outputfolder + "exciting-solution-" +
                              std::string(argv[1]) + ".csv");

@@ -1,7 +1,7 @@
 #ifndef CONDITION_NUMBER_OPTIMIZER_H
 #define CONDITION_NUMBER_OPTIMIZER_H
 
-#include "Go1Constants.h"
+#include "Go2Constants.h"
 
 #include "Optimizer.h"
 
@@ -16,7 +16,7 @@
 #include "VelocityLimits.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 
 class ExcitingTrajectoryGenerator : public Optimizer {
 public:
@@ -86,7 +86,7 @@ public:
   MatX pY_independent_pz;
 };
 
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // CONDITION_NUMBER_OPTIMIZER_H

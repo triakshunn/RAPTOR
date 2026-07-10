@@ -11,7 +11,7 @@
 #include "pinocchio/algorithm/joint-configuration.hpp"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 namespace nb = nanobind;
@@ -130,7 +130,7 @@ public:
 };
 
 }; // namespace Armour
-}; // namespace Go1
+}; // namespace Go2
 }; // namespace RAPTOR
 
 #endif // DUAL_ARMOUR_PYBIND_WRAPPER_H

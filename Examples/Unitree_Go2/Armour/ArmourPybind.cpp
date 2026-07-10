@@ -5,7 +5,7 @@
 namespace nb = nanobind;
 
 using namespace RAPTOR;
-using namespace Go1;
+using namespace Go2;
 using namespace Armour;
 
 NB_MODULE(armour_nanobind, m) {

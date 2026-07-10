@@ -10,8 +10,8 @@ using namespace RAPTOR;
 
 int main(int argc, char *argv[]) {
   if (argc < 3) {
-    std::cerr << "Usage: ./Go1_SysidFriction_test <leg> <timestamp>\n"
-              << "  e.g. ./Go1_SysidFriction_test FR 20250707_1430" << std::endl;
+    std::cerr << "Usage: ./Go2_SysidFriction_test <leg> <timestamp>\n"
+              << "  e.g. ./Go2_SysidFriction_test FR 20250707_1430" << std::endl;
     return 1;
   }
   const std::string leg     = std::string(argv[1]);
@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
   oss << std::put_time(std::localtime(&t_now), "%Y%m%d_%H%M");
   const std::string run_ts = oss.str();
 
-  const std::string urdf_filename = "../Robots/unitree-go1/go1_" + leg + ".urdf";
+  const std::string urdf_filename = "../Robots/unitree-go2/go2_" + leg + ".urdf";
   pinocchio::Model model;
   pinocchio::urdf::buildModel(urdf_filename, model);
   pinocchio::Data data(model);
@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
   // Initialize data
   bool include_offset_input = false;
   const std::string data_dir =
-      "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
+      "../Examples/Unitree_Go2/SystemIdentification/ParametersIdentification/"
       "full_params_data/friction/" + leg + "/";
 
   const std::string posFile    = data_dir + "q_downsampled_"    + data_ts + ".csv";

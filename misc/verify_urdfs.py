@@ -2,13 +2,13 @@ import pinocchio as pin
 import os
 
 def verify():
-    urdf_dir = "/workspaces/raptor/Robots/unitree-go1"
+    urdf_dir = "/workspaces/raptor/Robots/unitree-go2"
     files = {
-        "go1_base.urdf": 6,  # 6-DOF floating base
-        "go1_FR.urdf": 3,    # 3-DOF (hip, thigh, calf)
-        "go1_FL.urdf": 3,
-        "go1_RR.urdf": 3,
-        "go1_RL.urdf": 3
+        "go_base.urdf": 6,  # 6-DOF floating base
+        "go2_FR.urdf": 3,    # 3-DOF (hip, thigh, calf)
+        "go2_FL.urdf": 3,
+        "go2_RR.urdf": 3,
+        "go2_RL.urdf": 3
     }
     
     all_ok = True

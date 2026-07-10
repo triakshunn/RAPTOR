@@ -1,7 +1,7 @@
 #include "SafePayloadExcitingTrajectoryGenerator.h"
 
 namespace RAPTOR {
-namespace Go1 {
+namespace Go2 {
 namespace Armour {
 
 bool SafePayloadExcitingTrajectoryGenerator::set_parameters(

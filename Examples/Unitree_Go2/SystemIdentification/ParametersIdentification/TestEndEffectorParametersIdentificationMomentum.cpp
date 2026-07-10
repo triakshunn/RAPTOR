@@ -4,7 +4,7 @@
 using namespace RAPTOR;
 
 const std::string folder_name =
-    "../Examples/Unitree_Go1/SystemIdentification/ParametersIdentification/"
+    "../Examples/Unitree_Go2/SystemIdentification/ParametersIdentification/"
     "full_params_data/";
 
 const int H = 5;
@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
   // check if the file number is provided
   if (argc < 2) {
           throw std::invalid_argument(
-          "Usage: ./Go1_SysidInertialMomentum_test FR [FL RR RL ...]");
+          "Usage: ./Go2_SysidInertialMomentum_test FR [FL RR RL ...]");
   }
 
   for (int leg_idx = 1; leg_idx < argc; leg_idx++) {
@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
     std::cout << "\n=== Processing leg: " << leg << " ===\n";
 
     pinocchio::Model model;
-    pinocchio::urdf::buildModel("../Robots/unitree-go1/go1_" + leg + ".urdf", model);
+    pinocchio::urdf::buildModel("../Robots/unitree-go2/go2_" + leg + ".urdf", model);
 
     const std::string friction_file =
             folder_name + "friction/" + leg + "/friction_parameters_solution.csv";

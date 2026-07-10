@@ -2,8 +2,8 @@ import xml.etree.ElementTree as ET
 import os
 
 def split_urdf():
-    urdf_path = "../Robots/unitree-go1/go1.urdf"
-    output_dir = "../Robots/unitree-go1"
+    urdf_path = "../Robots/unitree-go2/go2.urdf"
+    output_dir = "../Robots/unitree-go2"
 
     tree = ET.parse(urdf_path)
     root = tree.getroot()
@@ -18,7 +18,7 @@ def split_urdf():
     # 1. Generate base URDF (only base, trunk, and imu)
     base_tree = ET.parse(urdf_path)
     base_root = base_tree.getroot()
-    base_root.set("name", "go1_base")
+    base_root.set("name", "go2_base")
 
     # Change floating_base joint type to floating for base identification
     for joint in base_root.findall("joint"):
@@ -48,14 +48,14 @@ def split_urdf():
                 except ValueError:
                     pass
 
-    base_tree.write(os.path.join(output_dir, "go1_base.urdf"), encoding="utf-8", xml_declaration=True)
-    print("Generated go1_base.urdf")
+    base_tree.write(os.path.join(output_dir, "go2_base.urdf"), encoding="utf-8", xml_declaration=True)
+    print("Generated go2_base.urdf")
 
     # 2. Generate per-leg URDFs
     for leg_name, prefix in legs.items():
         leg_tree = ET.parse(urdf_path)
         leg_root = leg_tree.getroot()
-        leg_root.set("name", f"go1_{leg_name}")
+        leg_root.set("name", f"go2_{leg_name}")
 
         # Keep only elements belonging to this leg, base elements, and IMU
         for elem in list(leg_root):
@@ -94,7 +94,7 @@ def split_urdf():
                     pass
 
         # Write to file
-        output_path = os.path.join(output_dir, f"go1_{leg_name}.urdf")
+        output_path = os.path.join(output_dir, f"go2_{leg_name}.urdf")
         leg_tree.write(output_path, encoding="utf-8", xml_declaration=True)
         print(f"Generated {output_path}")
 
