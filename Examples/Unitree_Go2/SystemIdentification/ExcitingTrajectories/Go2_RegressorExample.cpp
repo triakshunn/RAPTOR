@@ -73,15 +73,18 @@ int main(int argc, char *argv[]) {
   //     Eigen::Vector3d(0.15, 0.15, 0.15)
   // };
 
-  // Define limits buffer
+  // Define limits buffer (apply on all joiinst btw)
+  // smallest-1-(0.02,0,0.5), 5%-2-(3,45,1.2), 10%-3-(6,90,2.4), 20%-4-(12,180,4.7)
   Eigen::VectorXd joint_limits_buffer(model.nq);
-  joint_limits_buffer.setConstant(0.02);
+  joint_limits_buffer.setConstant(3);
   Eigen::VectorXd velocity_limits_buffer(model.nq);
-  // velocity_limits_buffer.setConstant(0.05);
-  velocity_limits_buffer.setZero();
+  velocity_limits_buffer.setConstant(45);
+  //velocity_limits_buffer.setZero();
   Eigen::VectorXd torque_limits_buffer(model.nq);
-  torque_limits_buffer.setConstant(0.5);
+  torque_limits_buffer.setConstant(1.2);
 
+
+  /// 
   // Initialize optimizer
   SmartPtr<PayloadExcitingTrajectoryGenerator> mynlp =
       new PayloadExcitingTrajectoryGenerator();
