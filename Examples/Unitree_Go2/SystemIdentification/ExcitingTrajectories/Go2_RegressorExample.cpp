@@ -74,14 +74,14 @@ int main(int argc, char *argv[]) {
   // };
 
   // Define limits buffer (apply on all joiinst btw)
-  // smallest-1-(0.02,0,0.5), 5%-2-(3,45,1.2), 10%-3-(6,90,2.4), 20%-4-(12,180,4.7)
+  // 2.5%(vel not)-1-(0.02,0,0.5), 5%-2-(0.052,0.785,1.2), 10%-3-(0.105,1.57,2.4), 20%-4-(0.209,3.14,4.7) (Cost_FR_FL_RR,RL: (3.07,3.08,2.89,3.15),(3.15447,2.92,2.97,3.06),(3.15411,3.11,3.16,3.12), (3.31,3.26,3.26, 3.27) )
   Eigen::VectorXd joint_limits_buffer(model.nq);
-  joint_limits_buffer.setConstant(3);
+  joint_limits_buffer.setConstant(0.02);
   Eigen::VectorXd velocity_limits_buffer(model.nq);
-  velocity_limits_buffer.setConstant(45);
+  velocity_limits_buffer.setConstant(0);
   //velocity_limits_buffer.setZero();
   Eigen::VectorXd torque_limits_buffer(model.nq);
-  torque_limits_buffer.setConstant(1.2);
+  torque_limits_buffer.setConstant(0.5);
 
 
   /// 
