@@ -30,7 +30,7 @@ public:
     bool set_parameters(
         const Model& model_input,
         const VecX offset_input = VecX::Zero(0),
-        const double lambda_ridge_input = 1e-6 
+        const double epsilon_ridge_input = 6e-8
     );
 
     // [add_trajectory_file]
@@ -146,7 +146,7 @@ public:
     int total_num_segments = 0;
 
         // offset in friction parameters
-    bool include_offset = false;
+    bool include_offset = true;
     VecX offset;
 
         // regression data
@@ -157,7 +157,8 @@ public:
     VecX theta_solution; // size =10*nv
 
         // ridge regressor parameter
-    double lambda_ridge = 0.0; 
+    VecX lambda_ridge; //   // per-parameter ridge weight: lambda_ridge(i) = epsilon_ridge / (phi_original(i)^2 + ridge_floor^2)
+        // so the same fractional pull toward URDF applies regardless of a parameter's magnitude
 };
 
 }; // namespace RAPTOR

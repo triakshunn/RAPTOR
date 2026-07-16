@@ -1,5 +1,8 @@
 #include "EndEffectorParametersIdentificationMomentum.h"
 #include <fstream>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 using namespace RAPTOR;
 
@@ -12,23 +15,33 @@ const int downsample_rate = 1;
 
 int main(int argc, char *argv[]) {
   // check if the file number is provided
-  if (argc < 2) {
-          throw std::invalid_argument(
-          "Usage: ./Go2_SysidInertialMomentum_test FR [FL RR RL ...]");
-  }
+  if (argc < 4) {
+        throw std::invalid_argument(
+            "Usage: ./Go2_SysidInertialMomentum_test <leg> <data_ts> <friction_ts>\n"
+            "  e.g. ./Go2_SysidInertialMomentum_test FR 20250707_1430 20250707_1432");
+    }
+    
+  const std::string leg         = std::string(argv[1]);
+  const std::string data_ts     = std::string(argv[2]);
+  const std::string friction_ts = std::string(argv[3]);
 
-  for (int leg_idx = 1; leg_idx < argc; leg_idx++) {
+  std::time_t t_now = std::time(nullptr);
+  std::ostringstream oss;
+  oss << std::put_time(std::localtime(&t_now), "%Y%m%d_%H%M");
+  const std::string run_ts = oss.str();
+ {
   
     // Load the robot model
 
-    const std::string leg = std::string(argv[leg_idx]);
     std::cout << "\n=== Processing leg: " << leg << " ===\n";
 
     pinocchio::Model model;
     pinocchio::urdf::buildModel("../Robots/unitree-go2/go2_" + leg + ".urdf", model);
 
+    // const std::string friction_file =
+    //         folder_name + "friction/" + leg + "/physical/friction_parameters_solution_filtered_20260715_2122.csv"; // change this to lower line
     const std::string friction_file =
-            folder_name + "friction/" + leg + "/friction_parameters_solution.csv";
+             folder_name + "friction/" + leg + "/physical/friction_parameters_solution_filtered_" + friction_ts + ".csv";
     Eigen::VectorXd fp =
           Utils::initializeEigenMatrixFromFile(friction_file).col(0);
     if (fp.size() != 3 * model.nv && fp.size() != 4 * model.nv)
@@ -42,7 +55,7 @@ int main(int argc, char *argv[]) {
         offset = fp.tail(model.nv);
 
     // load the data
-    const std::string data_dir = folder_name + "inertial/" + leg + "/";
+    const std::string data_dir = folder_name + "inertial/" + leg + "/physical/";
 
     // Sensor noise info
     SensorNoiseInfo sensor_noise(model.nv);
@@ -60,8 +73,10 @@ int main(int argc, char *argv[]) {
     sensor_noise.velocity_error.setZero();
     sensor_noise.acceleration_error_type =
         SensorNoiseInfo::SensorNoiseType::Ratio;
-    sensor_noise.acceleration_error.setConstant(0.10); // will need to change this value??  (this is the sensor noise added to torque data)
+    sensor_noise.acceleration_error.setConstant(0.1); //  (this is the sensor noise added to "torque" not accelaration data, nomenclature )(also this is defined for all joints, when each joint might have different unceratinity )
 
+
+    // ToDo: Find the sensor noise for each joint sensor for torque by keeping it at rest and recording torque values.
     // Initialize the Ipopt problem
     SmartPtr<EndEffectorParametersIdentificationMomentum> mynlp =
         new EndEffectorParametersIdentificationMomentum();
@@ -70,9 +85,9 @@ int main(int argc, char *argv[]) {
     double setup_time = 0;
     try {
       auto start = std::chrono::high_resolution_clock::now();
-      mynlp->set_parameters(model, offset);
-      mynlp->add_trajectory_file( data_dir + "traj_data.csv", sensor_noise, H,
-                                TimeFormat::Second, downsample_rate);
+      mynlp->set_parameters(model, offset, 6e-7); // init params for nlp
+      mynlp->add_trajectory_file( data_dir + "traj_data_filtered_" + data_ts + ".csv", sensor_noise, H,
+                                 TimeFormat::Second, downsample_rate);
       auto end = std::chrono::high_resolution_clock::now();
       setup_time =
           std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
@@ -135,7 +150,7 @@ int main(int argc, char *argv[]) {
     std::cout << "uncertainty:        " << mynlp->theta_uncertainty.transpose() << "\n";
     std::cout << "groundtruth:        " << mynlp->phi_original.transpose() << "\n";
 
-    const std::string out_path = data_dir + "inertial_parameters_solution.csv";
+    const std::string out_path = data_dir + "inertial_parameters_solution_filtered_" + run_ts + ".csv";
     std::ofstream out(out_path);
     for (int i = 0; i < mynlp->theta_solution.size(); i++)
        out << mynlp->theta_solution(i) << (i < mynlp->theta_solution.size() - 1 ? "," : "\n");
@@ -145,4 +160,4 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-
+// 1655: 6e-8, 1657: 2e-8, 1658: 2e-7, 1700: 6e-7

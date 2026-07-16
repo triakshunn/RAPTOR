@@ -15,7 +15,7 @@ namespace RAPTOR {
 bool EndEffectorParametersIdentificationMomentum::set_parameters(
     const Model& model_input,
     const VecXd offset_input,
-    const double lambda_ridge_input
+    const double epsilon_ridge_input
 )
 { 
     enable_hessian = true;
@@ -41,7 +41,13 @@ bool EndEffectorParametersIdentificationMomentum::set_parameters(
     }
 
     // simply give 0 as initial guess
-    lambda_ridge=lambda_ridge_input; 
+    // lambda_ridge=lambda_ridge_input; 
+    constexpr double ridge_floor = 1e-5;
+    lambda_ridge = VecXd::Zero(10 * modelPtr_->nv);
+    for (Index i = 0; i < lambda_ridge.size(); i++) {
+        lambda_ridge(i) = epsilon_ridge_input /
+                           (phi_original(i) * phi_original(i) + ridge_floor * ridge_floor);
+   }
     x0 = VecXd::Zero(10 * modelPtr_->nv); // 30???
 
     return true;
@@ -243,12 +249,12 @@ void EndEffectorParametersIdentificationMomentum::finalize_solution(
          }
      }
     
-    p_z_p_eta += lambda_ridge * dtheta_full.transpose() * dtheta_full; // logic? [TODO: Need to understand this]
+    p_z_p_eta += dtheta_full.transpose() * lambda_ridge.asDiagonal() * dtheta_full; // logic? [TODO: Need to understand this]
 
     VecXd phi_diff = phi - phi_original;
       for (int bk = 0; bk < nv; bk++) {
          for (int j = 0; j < 10; j++) {
-          p_z_p_eta.block<10,10>(10*bk, 10*bk) += lambda_ridge * phi_diff(10*bk+j) * ddtheta_blocks[bk](j);
+           p_z_p_eta.block<10,10>(10*bk, 10*bk) += lambda_ridge(10*bk+j) * phi_diff(10*bk+j) * ddtheta_blocks[bk](j);
          }
      } // logic?? [TODO: Need to understand this]
 

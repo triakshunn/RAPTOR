@@ -32,15 +32,15 @@ int main(int argc, char *argv[]) {
   model.armature.setZero();
 
   // Initialize data
-  bool include_offset_input = false;
+  bool include_offset_input = true;
   const std::string data_dir =
       "../Examples/Unitree_Go2/SystemIdentification/ParametersIdentification/"
-      "full_params_data/friction/" + leg + "/";
+      "full_params_data/friction/" + leg + "/physical/";
 
-  const std::string posFile    = data_dir + "q_downsampled_"    + data_ts + ".csv";
-  const std::string velFile    = data_dir + "q_d_downsampled_"  + data_ts + ".csv";
-  const std::string accFile    = data_dir + "q_dd_downsampled_" + data_ts + ".csv";
-  const std::string torqueFile = data_dir + "tau_downsampled_"  + data_ts + ".csv";
+  const std::string posFile    = data_dir + "q_downsampled_filtered_"    + data_ts + ".csv";
+  const std::string velFile    = data_dir + "q_d_downsampled_filtered_"  + data_ts + ".csv";
+  const std::string accFile    = data_dir + "q_dd_downsampled_filtered_" + data_ts + ".csv";
+  const std::string torqueFile = data_dir + "tau_downsampled_filtered_"  + data_ts + ".csv";
 
   Eigen::MatrixXd posData = Utils::initializeEigenMatrixFromFile(posFile);
   Eigen::MatrixXd velData = Utils::initializeEigenMatrixFromFile(velFile);
@@ -115,8 +115,8 @@ int main(int argc, char *argv[]) {
               << std::endl;
 
     // Write the friction parameters into the file
-    std::ofstream solution(data_dir + "friction_parameters_solution_" + run_ts + ".csv");
-    std::cout << "Solution saved: " << data_dir + "friction_parameters_solution_" + run_ts + ".csv\n";
+    std::ofstream solution(data_dir + "friction_parameters_solution_filtered_" + run_ts + ".csv");
+    std::cout << "Solution saved: " << data_dir + "friction_parameters_solution_filtered_" + run_ts + ".csv\n";
 
     solution << std::setprecision(16);
     for (int i = 0; i < mynlp->solution.size(); i++) {
@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
     Eigen::VectorXd armature = mynlp->solution.segment(2 * model.nv, model.nv); // next 12 values
     Eigen::VectorXd offset = Eigen::VectorXd::Zero(model.nv);
     if (include_offset_input) {
-      offset = mynlp->solution.tail(model.nv); // last 12 values ( but not init here )
+      offset = mynlp->solution.tail(model.nv); // last 12 values 
     }
 
     // case 1
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
       tau_inertials.col(i) = data.tau;
     }
 
-    std::ofstream estimate_tau(data_dir + "friction_estimate_tau_" + run_ts + ".csv");
+    std::ofstream estimate_tau(data_dir + "friction_estimate_tau_filtered_" + run_ts + ".csv");
 
     for (Index i = 0; i < N; i++) {
       const Eigen::VectorXd &q_d = velDataPtr_->col(i);
