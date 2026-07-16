@@ -30,7 +30,7 @@ public:
     bool set_parameters(
         const Model& model_input,
         const VecX offset_input = VecX::Zero(0),
-        const double epsilon_ridge_input = 6e-8
+        const double lambda_ridge_input = 1e-3
     );
 
     // [add_trajectory_file]
@@ -157,8 +157,7 @@ public:
     VecX theta_solution; // size =10*nv
 
         // ridge regressor parameter
-    VecX lambda_ridge; //   // per-parameter ridge weight: lambda_ridge(i) = epsilon_ridge / (phi_original(i)^2 + ridge_floor^2)
-        // so the same fractional pull toward URDF applies regardless of a parameter's magnitude
+    double lambda_ridge = 0.0;
 };
 
 }; // namespace RAPTOR

@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
     // const std::string friction_file =
     //         folder_name + "friction/" + leg + "/physical/friction_parameters_solution_filtered_20260715_2122.csv"; // change this to lower line
     const std::string friction_file =
-             folder_name + "friction/" + leg + "/physical/friction_parameters_solution_filtered_" + friction_ts + ".csv";
+             folder_name + "friction/" + leg + "/friction_parameters_solution_" + friction_ts + ".csv";
     Eigen::VectorXd fp =
           Utils::initializeEigenMatrixFromFile(friction_file).col(0);
     if (fp.size() != 3 * model.nv && fp.size() != 4 * model.nv)
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
         offset = fp.tail(model.nv);
 
     // load the data
-    const std::string data_dir = folder_name + "inertial/" + leg + "/physical/";
+    const std::string data_dir = folder_name + "inertial/" + leg + "/";
 
     // Sensor noise info
     SensorNoiseInfo sensor_noise(model.nv);
@@ -85,8 +85,8 @@ int main(int argc, char *argv[]) {
     double setup_time = 0;
     try {
       auto start = std::chrono::high_resolution_clock::now();
-      mynlp->set_parameters(model, offset, 6e-7); // init params for nlp
-      mynlp->add_trajectory_file( data_dir + "traj_data_filtered_" + data_ts + ".csv", sensor_noise, H,
+      mynlp->set_parameters(model, offset, 1e-3); // init params for nlp
+      mynlp->add_trajectory_file( data_dir + "traj_data_" + data_ts + ".csv", sensor_noise, H,
                                  TimeFormat::Second, downsample_rate);
       auto end = std::chrono::high_resolution_clock::now();
       setup_time =
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
     std::cout << "uncertainty:        " << mynlp->theta_uncertainty.transpose() << "\n";
     std::cout << "groundtruth:        " << mynlp->phi_original.transpose() << "\n";
 
-    const std::string out_path = data_dir + "inertial_parameters_solution_filtered_" + run_ts + ".csv";
+    const std::string out_path = data_dir + "inertial_parameters_solution_" + run_ts + ".csv";
     std::ofstream out(out_path);
     for (int i = 0; i < mynlp->theta_solution.size(); i++)
        out << mynlp->theta_solution(i) << (i < mynlp->theta_solution.size() - 1 ? "," : "\n");

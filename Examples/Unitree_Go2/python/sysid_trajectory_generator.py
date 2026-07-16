@@ -88,17 +88,18 @@ def make_inertial_traj_fn(csv_path):
         q_d   = np.array([np.interp(t_c, t_vec, data[:, 1+j]) for j in range(3)])
         qd_d  = np.array([np.interp(t_c, t_vec, data[:, 4+j]) for j in range(3)])
         qdd_d = np.array([np.interp(t_c, t_vec, data[:, 7+j]) for j in range(3)])
+        tau_d = np.array([np.interp(t_c, t_vec, data[:, 10+j]) for j in range(3)])
 
-        return q_d, qd_d, qdd_d
+        return q_d, qd_d, qdd_d, tau_d
 
     return traj_fn
 
-def make_pd_controller(kp,kd):
+def make_tauff_pd_controller(kp,kd):
     Kp = np.full(3, kp) # 3 since number of 3 joints in a leg of Go1
     Kd = np.full(3, kd)
 
-    def ctrl_fn(q, v, qd, qd_d, qd_dd):
-        return Kp * (qd - q) + Kd * (qd_d - v)
+    def ctrl_fn(q, v, qd, qd_d, qd_dd,tau_ff):
+        return tau_ff+ Kp * (qd - q) + Kd * (qd_d - v)
 
     return ctrl_fn
 
@@ -109,11 +110,11 @@ def verify_trajectory_safety(traj_fn, model, ctrl_fn):
     """
     q_min = model.lowerPositionLimit
     q_max = model.upperPositionLimit
-    margin = 0.01  # rad safety margin
+    margin = 0.01 # rad safety margin
 
     # Sample 1000 points across simulation duration
     for t in np.linspace(0, T_SIM, 1000):
-        q_d, qd_d, qdd_d = traj_fn(t)
+        q_d, qd_d, qdd_d, tau_d = traj_fn(t)
 
         # Position check
         if np.any(q_d < q_min + margin) or np.any(q_d > q_max - margin):
@@ -132,7 +133,7 @@ def verify_trajectory_safety(traj_fn, model, ctrl_fn):
             raise ValueError(f"Velocity limit violation at t={t:.3f}s: joints {viol}")
 
         # Torque check (assuming perfect tracking: q=q_d, v=q_d_d)
-        tau = ctrl_fn(q_d, qd_d, q_d, qd_d, qdd_d)
+        tau = ctrl_fn(q_d, qd_d, q_d, qd_d, qdd_d, tau_d)
         if np.any(np.abs(tau) > TAU_LIMITS):
             viol = np.where(np.abs(tau) > TAU_LIMITS)[0]
             raise ValueError(f"Torque limit violation at t={t:.3f}s: joints {viol}, tau={tau[viol]}")
@@ -314,7 +315,7 @@ def main():
     # ===== Load per-leg URDF (nv=3, fixed base) =====
     current_dir = os.path.dirname(os.path.abspath(__file__))
     urdf_path = os.path.abspath(
-        os.path.join(current_dir, f"../../../Robots/unitree-go1/go1_{args.leg}.urdf")
+        os.path.join(current_dir, f"../../../Robots/unitree-go2/go2_{args.leg}.urdf")
     )
 
     if not os.path.exists(urdf_path):
@@ -328,7 +329,14 @@ def main():
     
      # ===== Build trajectory function =====
     if args.mode == 'friction':
-        traj_fn = make_friction_traj_fn()
+        # traj_fn = make_friction_traj_fn() ### using the exciting trajectory for friction estimation
+        csv_path = os.path.abspath(
+            os.path.join(
+                current_dir,
+                f"../SystemIdentification/ExcitingTrajectories/data/{args.leg}/exciting-trajectory-{args.run}.csv"
+            )
+        )
+        traj_fn = make_inertial_traj_fn(csv_path)
     else:  # inertial
         csv_path = os.path.abspath(
             os.path.join(
@@ -340,9 +348,10 @@ def main():
 
      # ===== Build controller (all 3 joints always active) =====
     if args.mode == 'friction':
-        ctrl_fn = make_pd_controller(KP_FRICTION, KD_FRICTION)
+        ctrl_fn = make_tauff_pd_controller(KP_FRICTION, KD_FRICTION)
     else:
-        ctrl_fn = make_pd_controller(KP_INERTIAL, KD_INERTIAL)
+
+        ctrl_fn = make_tauff_pd_controller(KP_INERTIAL, KD_INERTIAL)
 
     # ===== Safety check =====
     print("Running safety verification...")

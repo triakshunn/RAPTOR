@@ -912,3 +912,14 @@ I_lumped     = I_calf + I_foot shifted by [0,0,−0.213] via parallel axis
 The result: model has nv=3, 3 bodies (hip, thigh, calf), and calf's phi = lumped calf+foot parameters.
 
 So when reidentifying calf parameters, need to reverse these parameters to get actual calf values. (Only for sanity check, pinnochio will always lump these parameters back)
+
+## Logic for friction armature estimation
+──────────────────────────┬──────────────────────────┬────────────────────────────────────────────────┐
+│                           │       Hip / Thigh        │                      Calf                      │
+├───────────────────────────┼──────────────────────────┼────────────────────────────────────────────────┤
+│ effort (URDF)             │ 23.7 N·m                 │ 45.43 N·m                                      │
+├───────────────────────────┼──────────────────────────┼────────────────────────────────────────────────┤
+│ gear ratio                │ N = 6.22 (internal only) │ N = 6.22 × (45.43/23.7) = 6.22 × 1.917 ≈ 11.93 │
+├───────────────────────────┼──────────────────────────┼────────────────────────────────────────────────┤
+│ I_armature = I_rotor × N² │ 0.004330 kg·m²           │ 0.015911 kg·m²                                 │
+└───────────────────────────┴──────────────────────────┴────────────────────────────────────────────────┘

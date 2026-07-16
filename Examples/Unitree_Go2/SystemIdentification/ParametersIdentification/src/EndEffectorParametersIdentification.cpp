@@ -17,7 +17,7 @@ namespace RAPTOR {
 
 
 bool EndEffectorParametersIdentification::set_parameters(
-    const Model &model_input, const VecX offset_input, const double epsilon_ridge_input) {
+    const Model &model_input, const VecX offset_input, const double lambda_ridge_input) {
   enable_hessian = true;
 
   // parse the robot model
@@ -42,12 +42,7 @@ bool EndEffectorParametersIdentification::set_parameters(
   }
 
   // simply give 0 as initial guess
-  constexpr double ridge_floor = 1e-5; // below every real URDF entry, above near-zero symmetric-link cross terms
-  lambda_ridge = VecX::Zero(10 * modelPtr_->nv);
-  for (Index i = 0; i < lambda_ridge.size(); i++) {
-    lambda_ridge(i) = epsilon_ridge_input /
-                       (phi_original(i) * phi_original(i) + ridge_floor * ridge_floor);
-  }
+  lambda_ridge=lambda_ridge_input;
   x0 = VecX::Zero(10*modelPtr_->nv);
   
   return true;
@@ -213,9 +208,7 @@ bool EndEffectorParametersIdentification::eval_f(Index n, const Number *x,
     const VecX diff = Aseg[i] * phi - bseg[i]; // residual
     obj_value += 0.5 * diff.dot(diff);   // added the normalization term. (Possible ToDo direction: only subtract for unidentifiable columns)
   }
-  // obj_value+=0.5*(lambda_ridge * (phi-phi_original).squaredNorm()); 
-  const VecX phi_diff_f = phi - phi_original;
-  obj_value += 0.5 * lambda_ridge.cwiseProduct(phi_diff_f).dot(phi_diff_f); // since multiplying column by column
+  obj_value+=0.5*(lambda_ridge * (phi-phi_original).squaredNorm());
 
   update_minimal_cost_solution(n, z, new_x, obj_value); // function to assign z and obj_value in the optimizer solution. 
 
@@ -253,9 +246,8 @@ bool EndEffectorParametersIdentification::eval_grad_f(Index n, const Number *x,
   // Ridge gradient: λ · (∂φ/∂z)ᵀ · (φ - φ_orig)
   const VecX phi_diff = phi - phi_original;
   for (int k = 0; k < nv; k++) {
-     grad_f_vec.segment<10>(10 * k) +=
-          dtheta_blocks[k].transpose() *
-          lambda_ridge.segment<10>(10 * k).cwiseProduct(phi_diff.segment<10>(10 * k));
+      grad_f_vec.segment<10>(10 * k) +=
+          lambda_ridge * dtheta_blocks[k].transpose() * phi_diff.segment<10>(10 * k);
   }
 
 
@@ -312,14 +304,14 @@ bool EndEffectorParametersIdentification::eval_hess_f(Index n, const Number *x,
     // hess_f+lamda*dtheta*dtheta.T+ lamda*phi_del*ddtheta;
 
     // Ridge Gauss-Newton: λ · dtheta_fullᵀ · dtheta_full
-  hess_f += dtheta_full.transpose() * lambda_ridge.asDiagonal() * dtheta_full;
+  hess_f += lambda_ridge * dtheta_full.transpose() * dtheta_full;
 
   // Ridge second-order correction: λ · Σⱼ (φ-φ_orig)[j] · ddθ_j
   const VecX phi_diff = phi - phi_original;
   for (int b = 0; b < nv; b++) {
       for (Index j = 0; j < 10; j++) {
           hess_f.block<10, 10>(10 * b, 10 * b) +=
-              lambda_ridge(10 * b + j) * phi_diff(10 * b + j) * ddtheta_blocks[b](j); // Do not understand this, review this
+              lambda_ridge * phi_diff(10 * b + j) * ddtheta_blocks[b](j); // Do not understand this, review this
       }
   }
 

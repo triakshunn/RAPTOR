@@ -86,17 +86,17 @@ def integrate(model, ts_sim, x0, desired_trajectory, controller, Fc_true, Fv_tru
         q = x[:nq]
         v = x[nq:]
         
-        qd, qd_d, qd_dd = desired_trajectory(t)
+        qd, qd_d, qd_dd,tau_ff = desired_trajectory(t) ### (need to check) might break stuff, since I am adding tau_f 
     
 
-        tau_cmd= controller(q, v, qd, qd_d, qd_dd) ### uses armature from the model.armature
+        tau_cmd= controller(q, v, qd, qd_d, qd_dd, tau_ff) ### uses armature from the model.armature
 
         # Coulomb + viscous friction resist motion — subtract from commanded torque
         tau_friction = Fc_true * np.sign(v) + Fv_true * v
         tau = tau_cmd - tau_friction
         a = pin.aba(
             model, data, q, v, tau ### the model passed here is with true armature for simulation dynamics, tau is having model.armature from what we estimated.
-        )
+        )       
         
         return np.concatenate([v, a])
     
@@ -120,8 +120,8 @@ def integrate(model, ts_sim, x0, desired_trajectory, controller, Fc_true, Fv_tru
     for i, t in enumerate(ts_sim):
         q = qs[i]
         v = vs[i]
-        qd, qd_d, qd_dd = desired_trajectory(t)
-        taus[i] = controller(q, v, qd, qd_d, qd_dd) ### this is tau_cmd on line 92, we get it this way since we cant store tau_cmd during sim.
+        qd, qd_d, qd_dd, tau_ff = desired_trajectory(t)
+        taus[i] = controller(q, v, qd, qd_d, qd_dd, tau_ff) ### this is tau_cmd on line 92, we get it this way since we cant store tau_cmd during sim.
     print(f"Returning the sim results")
     return qs, vs, taus ### interesting: with lower gains, more tracking error here (expected) but why are my optimized gains WORSE? 
 
