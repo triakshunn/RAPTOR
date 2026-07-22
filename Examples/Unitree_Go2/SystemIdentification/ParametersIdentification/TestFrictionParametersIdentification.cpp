@@ -1,3 +1,8 @@
+/// data logging:
+/// 20260721_115700 : 5Hz low pass bw filter  Optimal Solution Found. Objective value: 26303.7
+//// 20260721_124600 : Curve fitting  Objective value: 21927
+//// 20260722_1700 : Sim data, 25 Hz low pass bw filter Objective value: 0.00210344
+//// 20260713_165102 : 25 Hz low pass bw filter Optimal Solution Found. Objective value: 23552.7
 #include <ctime>
 #include <iomanip>
 #include <sstream>

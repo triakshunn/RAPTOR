@@ -180,11 +180,15 @@ def controller(nv, q, v, qd, qd_d, qd_dd, active_joint_idxs,
     e   = qd   - q    # position error
     e_d = qd_d - v    # velocity error
 
-    Kp=np.ones(nv)*40.0
-    Kd=np.ones(nv)*0.5
+    # Kp=np.ones(nv)*40.0
+    # Kd=np.ones(nv)*0.5
 
-    Kp[active_joint_idxs] = 20.0
-    Kd[active_joint_idxs] = 0.5
+    Kp=np.ones(nv)*0.0
+    Kd=np.ones(nv)*0.0
+    
+
+    Kp[active_joint_idxs] = 0.0 ## 20.0 originally
+    Kd[active_joint_idxs] = 0.0 ### 0.5 originally
 
     if model_ctrl is None:
         # Fallback: pure PD
@@ -499,7 +503,7 @@ def main():
         Fv_noise = np.zeros(model.nv)
         Ia_noise = np.zeros(model.nv)
         
-        # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf)
+        # Set non-zero only for the 3 FR leg joints (indices 0, 1, 2 for FR hip, thigh, calf) (what should I place for physical setup here? my estimated or no friction params)
         Fc_true[0:3] = [0.5, 0.8, 0.6]   # Coulomb friction (N·m)
         Fv_true[0:3] = [0.3, 0.5, 0.4]   # Viscous damping (N·m·s/rad)
         Ia_true[0:3] = [0.02, 0.03, 0.02] # Armature inertia (kg·m²)
@@ -690,7 +694,7 @@ def main():
 
         # simulate the robot dynamics using ode solver
         # track the desired trajectory using the controller (ground truth)
-        qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, Fc_true, Fv_true, Ia_true)
+        qs_true, vs_true, taus_true = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_true, Fc_true, Fv_true, Ia_true) # ctrl_fn_ has the relevant eesti/true/noisy intertial parameters
         
         ### track the desired trajectory using the controller (estimate)
         qs_esti, vs_esti, taus_esti = integrate(model, ts_sim, np.concatenate([q0, v0]), traj_fn, ctrl_fn_esti, Fc_true, Fv_true, Ia_true)

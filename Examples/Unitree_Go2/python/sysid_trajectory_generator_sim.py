@@ -17,6 +17,9 @@ from go1_dynamics import integrate
 '''
 Go1 torque limits doc: https://pmc.ncbi.nlm.nih.gov/articles/PMC11207842/pdf/sensors-24-03825.pdf
 Go1 Kp:Kd torque values taken from here: https://arxiv.org/pdf/2304.09834
+
+ToDo: Add exciting trajectory I used for FR to record data. have realistic parameters in terms of resolution to identify. extract, and run these trajectories. 
+Doubt: For exciting trajectory, what are the parameters given for computing Tau, also try to find realistic inertial parameters. 
 '''
 
 # ===== Constants =====
@@ -35,18 +38,21 @@ T_SIM  = 10.0    # simulation duration (s)
 KP_FRICTION, KD_FRICTION   = 60.0, 3.0    # PD gains, friction mode
 KP_INERTIAL, KD_INERTIAL   = 60.0, 3.0  # PD gains, inertial mode 
 
-TAU_LIMITS = np.array([23.7, 23.7, 23.7])  # N·m — hip, thigh, calf (35.5 suggested by AI tho)
+TAU_LIMITS = np.array([23.7, 23.7, 45.43])  # N·m — hip, thigh, calf
 V_LIMIT    = 30.0                            # rad/s
 
 # Ground-truth friction (simulation only — not used for hardware)
-FC_TRUE = np.array([0.5, 0.8, 0.6])
-FV_TRUE = np.array([0.3, 0.5, 0.4])
-IA_TRUE = np.array([0.02, 0.03, 0.02])
+FC_TRUE     = np.array([0.20, 0.25, 0.35])   # Coulomb, N·m — calf highest (linkage)
+FV_TRUE     = np.array([0.04, 0.05, 0.06])   # viscous, N·m·s/rad — small for QDD
+IA_TRUE     = np.array([0.015, 0.020, 0.030]) # reflected inertia, kg·m² — calf highest
+OFFSET_TRUE = np.array([0.05, -0.08, 0.10])  # bias, N·m — distinct sign/magnitude per joint
+
 
 sys.path.append("/workspaces/RAPTOR/build/lib")
 
 
-def make_friction_traj_fn():
+def make_sinusoid_traj_fn():
+
     """
     All 3 joints excited simultaneously with different frequencies and phases.
     Returns a trajectory function traj_fn(t) → (q_d, qd_d, qdd_d).
@@ -68,11 +74,12 @@ def make_friction_traj_fn():
 
     return traj_fn
 
-def make_inertial_traj_fn(csv_path):
+def make_exciting_traj_fn(csv_path):
     """
     Load exciting trajectory from CSV (output of Go1_RegressorExample.cpp).
     CSV columns: [t, q0, q1, q2, v0, v1, v2, qdd0, qdd1, qdd2, tau0, tau1, tau2]
     Returns a trajectory function that interpolates the CSV data.
+
     """
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Exciting trajectory CSV not found: {csv_path}")
@@ -329,14 +336,13 @@ def main():
     
      # ===== Build trajectory function =====
     if args.mode == 'friction':
-        # traj_fn = make_friction_traj_fn() ### using the exciting trajectory for friction estimation
         csv_path = os.path.abspath(
             os.path.join(
                 current_dir,
                 f"../SystemIdentification/ExcitingTrajectories/data/{args.leg}/exciting-trajectory-{args.run}.csv"
             )
         )
-        traj_fn = make_inertial_traj_fn(csv_path)
+        traj_fn = make_exciting_traj_fn(csv_path)
     else:  # inertial
         csv_path = os.path.abspath(
             os.path.join(
@@ -344,7 +350,7 @@ def main():
                 f"../SystemIdentification/ExcitingTrajectories/data/{args.leg}/exciting-trajectory-{args.run}.csv"
             )
         )
-        traj_fn = make_inertial_traj_fn(csv_path)
+        traj_fn = make_exciting_traj_fn(csv_path)
 
      # ===== Build controller (all 3 joints always active) =====
     if args.mode == 'friction':
@@ -368,7 +374,7 @@ def main():
     # All 3 joints are active (list [0,1,2])
     qs, vs, taus = integrate(
         model, ts, x0, traj_fn, ctrl_fn,
-        FC_TRUE, FV_TRUE, IA_TRUE
+        FC_TRUE, FV_TRUE, IA_TRUE, OFFSET_TRUE
     )
     print(f"✓ Simulation complete: {len(ts)} timesteps")
 
@@ -386,7 +392,7 @@ def main():
 
     # Optional: filter if desired (typically not needed for simulation)
     fs = 1 / dt_acc
-    accs_out = butterworth_lowpass_filter(accs_out, cutoff=30, fs=fs)
+    accs_out = butterworth_lowpass_filter(accs_out, cutoff=25, fs=fs) ## original was 30, changed to 25 since that is used for physical evaluation
 
     #### removing near zero velocity values to avoid chattering
     if args.mode == 'friction':
@@ -406,7 +412,7 @@ def main():
     out_dir = os.path.abspath(
         os.path.join(
             current_dir,
-            f"../SystemIdentification/ParametersIdentification/full_params_data/{args.mode}/{args.leg}/"
+            f"../SystemIdentification/ParametersIdentification/full_params_data/{args.mode}/{args.leg}/sim/"
         )
     )
 

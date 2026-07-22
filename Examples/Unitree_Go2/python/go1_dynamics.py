@@ -32,7 +32,7 @@ from scipy.integrate import solve_ivp
 
 
 
-def integrate(model, ts_sim, x0, desired_trajectory, controller, Fc_true, Fv_true, Ia_true, method='RK45'):
+def integrate(model, ts_sim, x0, desired_trajectory, controller, Fc_true, Fv_true, Ia_true,Offset_true, method='RK45'):
     """
     Integrates the dynamics of a robotic system over a given time period.
     Parameters:
@@ -86,13 +86,13 @@ def integrate(model, ts_sim, x0, desired_trajectory, controller, Fc_true, Fv_tru
         q = x[:nq]
         v = x[nq:]
         
-        qd, qd_d, qd_dd,tau_ff = desired_trajectory(t) ### (need to check) might break stuff, since I am adding tau_f 
+        qd, qd_d, qd_dd,tau_ff = desired_trajectory(t) ### (need to check) might break stuff, since I am adding tau_f (yes, add a placeholder? )
     
 
-        tau_cmd= controller(q, v, qd, qd_d, qd_dd, tau_ff) ### uses armature from the model.armature
+        tau_cmd= controller(q, v, qd, qd_d, qd_dd, tau_ff) ### uses armature from the model.armature (breaks since here controller does not give tau_ff in sysid_comparison)
 
         # Coulomb + viscous friction resist motion — subtract from commanded torque
-        tau_friction = Fc_true * np.sign(v) + Fv_true * v
+        tau_friction = Fc_true * np.sign(v) + Fv_true * v + Offset_true
         tau = tau_cmd - tau_friction
         a = pin.aba(
             model, data, q, v, tau ### the model passed here is with true armature for simulation dynamics, tau is having model.armature from what we estimated.
