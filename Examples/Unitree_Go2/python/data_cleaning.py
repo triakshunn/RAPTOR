@@ -200,7 +200,7 @@ def parse_args():
     parser.add_argument("--raw-ts", required=True, help="timestamp of raw traj_data file, e.g. 20260713_165102")
     parser.add_argument("--cutoff", type=float, default=30.0, help="Butterworth cutoff freq (Hz)")
     parser.add_argument("--order", type=int, default=4, help="Butterworth filter order")
-    parser.add_argument("--v-threshold", type=float, default=0.01, help="near-zero velocity cutoff (rad/s), friction mode only")
+    parser.add_argument("--v-threshold", type=float, default=0.01, help="near-zero velocity cutoff (rad/s), friction mode only") # increase to 0.1
     parser.add_argument("--inspect", action="store_true",
                         help="plot PSD of raw qd/tau and exit, instead of running the filter pipeline")
     parser.add_argument("--inspect-cutoffs", type=float, nargs="+", default=[5, 10, 20, 30],

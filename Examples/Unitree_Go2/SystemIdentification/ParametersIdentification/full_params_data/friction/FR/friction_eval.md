@@ -10,10 +10,12 @@ Units: N·m. Fixed gains across all runs.
 
 | Candidate (method)                    | Run   | RMS hip | RMS thigh | RMS calf | **RMS total** |
 |---------------------------------------|-------|--------:|----------:|---------:|--------------:|
-| 20 Hz low-pass                        | 1621  | **0.4494** | **0.6521** | 0.7972 | 1.1237 |
-| 20 Hz low-pass + armature (from URDF) | 1633  | 0.4572  | 0.6668    | **0.7691** | **1.1158** |
+| 25 Hz low-pass                        | 1621  | **0.4494** | **0.6521** | 0.7972 | 1.1237 |
+| 25 Hz low-pass + armature (from URDF) | 1633  | 0.4572  | 0.6668    | **0.7691** | **1.1158** |
 | 5 Hz low-pass                         | 1637  | 0.4599  | 0.6821    | 0.7977 | 1.1459 |
 | Curve matching                        | 1653  | 0.5300  | 0.6994    | 0.8234 | 1.2034 |
+| 25 Hz Low pass sim                    | ----   | 0.007386 |  0.010182 |  0.013019 | 0.018104
+
 
 Best per column in **bold**.
 
